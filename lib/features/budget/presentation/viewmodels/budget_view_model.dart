@@ -269,8 +269,10 @@ class BudgetViewModel extends ChangeNotifier {
 
       authMode = AuthMode.undecided;
       await _repository.saveAuthMode(authMode);
-    } catch (_) {
-      errorMessage = 'Unable to load your data. Please try again.';
+    } on FirebaseException catch (e) {
+      errorMessage = e.message ?? 'Firebase error: ${e.code}';
+    } catch (e) {
+      errorMessage = e is StateError ? e.message : 'Unable to load your data. Please try again.';
     } finally {
       isInitializing = false;
       isLoading = false;
@@ -294,7 +296,7 @@ class BudgetViewModel extends ChangeNotifier {
     try {
       final initialized = await _repository.initializeCloud();
       if (!initialized) {
-        throw Exception('Firebase not configured');
+        throw StateError('Firebase is not configured for this build.');
       }
       final connected = await _repository.connectEmail(
         email: email,
@@ -302,7 +304,7 @@ class BudgetViewModel extends ChangeNotifier {
         isRegister: isRegister,
       );
       if (!connected) {
-        throw Exception('Email sign-in failed');
+        throw StateError('Email sign-in failed.');
       }
       await _repository.syncAuthStateFromFirebase();
       authMode = AuthMode.email;
@@ -310,8 +312,35 @@ class BudgetViewModel extends ChangeNotifier {
       await _bootstrapForAuthMode(AuthMode.email);
       successMessage =
           isRegister ? 'Account created and signed in.' : 'Signed in successfully.';
-    } catch (_) {
-      errorMessage = 'Email sign-in failed. Verify credentials and Firebase Auth.';
+    } on FirebaseAuthException catch (e) {
+      switch (e.code) {
+        case 'invalid-email':
+          errorMessage = 'Invalid email address.';
+        case 'user-not-found':
+          errorMessage = 'No account found for this email.';
+        case 'wrong-password':
+          errorMessage = 'Incorrect password. Try again.';
+        case 'email-already-in-use':
+          errorMessage = 'This email is already registered. Try signing in.';
+        case 'weak-password':
+          errorMessage = 'Password is too weak (min 6 characters).';
+        case 'operation-not-allowed':
+          errorMessage =
+              'Email/password sign-in is disabled in Firebase Auth. Enable it in the Firebase console.';
+        case 'network-request-failed':
+          errorMessage = 'Network error. Check your connection and try again.';
+        case 'too-many-requests':
+          errorMessage = 'Too many attempts. Wait a bit and try again.';
+        case 'unauthorized-domain':
+          errorMessage =
+              'This web domain is not authorized for Firebase Auth. Add your domain in Firebase Console → Authentication → Settings → Authorized domains.';
+        default:
+          errorMessage = e.message ?? 'Auth error: ${e.code}';
+      }
+    } on FirebaseException catch (e) {
+      errorMessage = e.message ?? 'Firebase error: ${e.code}';
+    } on StateError catch (e) {
+      errorMessage = e.message;
     } finally {
       isLoading = false;
       notifyListeners();

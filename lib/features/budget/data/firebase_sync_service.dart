@@ -18,22 +18,49 @@ class FirebaseSyncService {
     if (!AppEnv.isFirebaseConfigured) return false;
     if (_initialized) return true;
 
-    final options = FirebaseOptions(
-      apiKey: AppEnv.firebaseApiKey,
-      appId: AppEnv.firebaseAppId,
-      messagingSenderId: AppEnv.firebaseMessagingSenderId,
-      projectId: AppEnv.firebaseProjectId,
-      authDomain: kIsWeb ? AppEnv.firebaseAuthDomain : null,
-      storageBucket: AppEnv.firebaseStorageBucket.isEmpty
-          ? null
-          : AppEnv.firebaseStorageBucket,
-      measurementId: AppEnv.firebaseMeasurementId.isEmpty
-          ? null
-          : AppEnv.firebaseMeasurementId,
-    );
-
     if (Firebase.apps.isEmpty) {
-      await Firebase.initializeApp(options: options);
+      if (kIsWeb) {
+        final authDomain = AppEnv.firebaseAuthDomain.isNotEmpty
+            ? AppEnv.firebaseAuthDomain
+            : AppEnv.derivedAuthDomain;
+        final storageBucket = AppEnv.firebaseStorageBucket.isNotEmpty
+            ? AppEnv.firebaseStorageBucket
+            : AppEnv.derivedStorageBucket;
+
+        final options = FirebaseOptions(
+          apiKey: AppEnv.firebaseApiKey,
+          appId: AppEnv.firebaseAppId,
+          messagingSenderId: AppEnv.firebaseMessagingSenderId,
+          projectId: AppEnv.firebaseProjectId,
+          authDomain: authDomain,
+          storageBucket: storageBucket.isEmpty ? null : storageBucket,
+          measurementId: AppEnv.firebaseMeasurementId.isEmpty
+              ? null
+              : AppEnv.firebaseMeasurementId,
+        );
+        await Firebase.initializeApp(options: options);
+      } else {
+        // Prefer native config (google-services.json / plist). If missing, fall back
+        // to explicit options so Android + desktop can still run in dev.
+        try {
+          await Firebase.initializeApp();
+        } catch (_) {
+          final storageBucket = AppEnv.firebaseStorageBucket.isNotEmpty
+              ? AppEnv.firebaseStorageBucket
+              : AppEnv.derivedStorageBucket;
+          final options = FirebaseOptions(
+            apiKey: AppEnv.firebaseApiKey,
+            appId: AppEnv.firebaseAppId,
+            messagingSenderId: AppEnv.firebaseMessagingSenderId,
+            projectId: AppEnv.firebaseProjectId,
+            storageBucket: storageBucket.isEmpty ? null : storageBucket,
+            measurementId: AppEnv.firebaseMeasurementId.isEmpty
+                ? null
+                : AppEnv.firebaseMeasurementId,
+          );
+          await Firebase.initializeApp(options: options);
+        }
+      }
     }
     _userId = FirebaseAuth.instance.currentUser?.uid;
     _initialized = true;
