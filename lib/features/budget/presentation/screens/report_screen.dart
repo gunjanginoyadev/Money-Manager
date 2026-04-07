@@ -4,16 +4,18 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import '../../../../core/layout/home_shell_insets.dart';
+import '../../../../core/utils/budget_period_utils.dart';
 import '../../../../core/services/transaction_pdf_export.dart';
 import '../../../../core/widgets/shell_profile_nav_button.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/utils/currency_formatter.dart';
-import '../../../../core/utils/month_utils.dart';
 import '../../domain/models/spending_kind.dart';
 import '../../domain/models/transaction_entry.dart';
 import '../viewmodels/budget_view_model.dart';
-import '../widgets/add_transaction_sheet.dart';
+import 'add_transaction_screen.dart';
 import '../widgets/liquidity_breakdown_card.dart';
+import '../widgets/transaction_actions.dart';
+import '../widgets/transaction_detail_sheet.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/loading_state.dart';
 
@@ -47,13 +49,6 @@ class _ReportScreenState extends State<ReportScreen> {
 
   _BucketFilter? _sheetDraftBucket;
   _TypeFilter? _sheetDraftType;
-
-  static bool _canGoNextMonth(DateTime selected) {
-    final next = DateTime(selected.year, selected.month + 1);
-    final now = DateTime.now();
-    final thisMonth = DateTime(now.year, now.month);
-    return !next.isAfter(thisMonth);
-  }
 
   List<TransactionEntry> _baseList(BudgetViewModel vm) {
     if (_period == _ReportPeriod.custom) {
@@ -106,7 +101,7 @@ class _ReportScreenState extends State<ReportScreen> {
     return true;
   }
 
-  String _periodLabel(BudgetViewModel vm) {
+  String _periodLabel(BudgetViewModel vm, int salaryDay) {
     if (_period == _ReportPeriod.custom &&
         _customAppliedStart != null &&
         _customAppliedEnd != null) {
@@ -114,7 +109,10 @@ class _ReportScreenState extends State<ReportScreen> {
       final b = _customAppliedEnd!;
       return '${a.day}/${a.month}/${a.year} — ${b.day}/${b.month}/${b.year}';
     }
-    return MonthUtils.formatMonthYear(vm.activityMonth);
+    return BudgetPeriodUtils.formatBudgetPeriodRange(
+      vm.activityMonth,
+      salaryDay,
+    );
   }
 
   void _ensureCustomDraftInitialized() {
@@ -133,7 +131,7 @@ class _ReportScreenState extends State<ReportScreen> {
       helpText: 'Select month',
     );
     if (!mounted || picked == null) return;
-    vm.setActivityMonth(MonthUtils.startOfMonth(picked));
+    vm.setActivityMonth(picked);
     setState(() {});
   }
 
@@ -248,11 +246,10 @@ class _ReportScreenState extends State<ReportScreen> {
       _appliedBucket == _BucketFilter.needs && _appliedType == null;
 
   static void _openAdd(BuildContext context) {
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => const AddTransactionSheet(),
+    Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => const AddTransactionScreen(),
+      ),
     );
   }
 
@@ -266,7 +263,8 @@ class _ReportScreenState extends State<ReportScreen> {
     final month = vm.activityMonth;
     final base = _baseList(vm);
     final items = base.where(_matchesFilters).toList();
-    final canNext = _canGoNextMonth(month);
+    final canNext = vm.canAdvanceReportToNextPeriod;
+    final payD = profile.salaryDayOfMonth.clamp(1, 31);
 
     double income = 0;
     double expense = 0;
@@ -308,7 +306,7 @@ class _ReportScreenState extends State<ReportScreen> {
                     onPressed: items.isEmpty
                         ? null
                         : () => TransactionPdfExport.shareReport(
-                              periodLabel: _periodLabel(vm),
+                              periodLabel: _periodLabel(vm, payD),
                               items: items,
                               profile: profile,
                             ),
@@ -350,7 +348,7 @@ class _ReportScreenState extends State<ReportScreen> {
                             segments: const [
                               ButtonSegment(
                                 value: _ReportPeriod.month,
-                                label: Text('Month'),
+                                label: Text('Pay period'),
                                 icon: Icon(Icons.calendar_month_rounded, size: 18),
                               ),
                               ButtonSegment(
@@ -378,7 +376,7 @@ class _ReportScreenState extends State<ReportScreen> {
                             },
                             style: SegmentedButton.styleFrom(
                               selectedBackgroundColor: AppColors.primary,
-                              selectedForegroundColor: Colors.white,
+                              selectedForegroundColor: AppColors.onAccent,
                               foregroundColor: AppColors.textSoft,
                               side: const BorderSide(color: AppColors.border),
                             ),
@@ -399,9 +397,7 @@ class _ReportScreenState extends State<ReportScreen> {
                                 children: [
                                   IconButton(
                                     onPressed: () {
-                                      vm.setActivityMonth(
-                                        MonthUtils.addMonths(month, -1),
-                                      );
+                                      vm.shiftActivityBudgetPeriod(-1);
                                     },
                                     icon: const Icon(Icons.chevron_left_rounded),
                                     color: AppColors.text,
@@ -419,8 +415,10 @@ class _ReportScreenState extends State<ReportScreen> {
                                           child: Column(
                                             children: [
                                               Text(
-                                                MonthUtils.formatMonthYear(
+                                                BudgetPeriodUtils
+                                                    .formatBudgetPeriodRange(
                                                   month,
+                                                  payD,
                                                 ),
                                                 textAlign: TextAlign.center,
                                                 style: GoogleFonts.sora(
@@ -431,7 +429,7 @@ class _ReportScreenState extends State<ReportScreen> {
                                               ),
                                               const SizedBox(height: 2),
                                               Text(
-                                                'Tap to pick month',
+                                                'Tap to pick a date in the period',
                                                 style: GoogleFonts.sora(
                                                   fontSize: 11,
                                                   color: AppColors.textMuted,
@@ -447,9 +445,7 @@ class _ReportScreenState extends State<ReportScreen> {
                                     onPressed: !canNext
                                         ? null
                                         : () {
-                                            vm.setActivityMonth(
-                                              MonthUtils.addMonths(month, 1),
-                                            );
+                                            vm.shiftActivityBudgetPeriod(1);
                                           },
                                     icon: const Icon(
                                       Icons.chevron_right_rounded,
@@ -558,7 +554,7 @@ class _ReportScreenState extends State<ReportScreen> {
                               snapshot: vm.monthLiquidityForMonth(month),
                               title: 'Period totals',
                               subtitle:
-                                  'All transactions in ${MonthUtils.formatMonthYear(month)}. Cash vs online uses the payment type on each entry.',
+                                  'All transactions in ${BudgetPeriodUtils.formatBudgetPeriodRange(month, payD)}. Cash vs online uses the payment type on each entry.',
                             )
                           else if (_customAppliedStart != null &&
                               _customAppliedEnd != null)
@@ -569,7 +565,7 @@ class _ReportScreenState extends State<ReportScreen> {
                               ),
                               title: 'Period totals',
                               subtitle:
-                                  'All transactions in ${_periodLabel(vm)}. Cash vs online uses the payment type on each entry.',
+                                  'All transactions in ${_periodLabel(vm, payD)}. Cash vs online uses the payment type on each entry.',
                             ),
                           const SizedBox(height: 14),
                           if (_filtersActive)
@@ -684,7 +680,10 @@ class _ReportScreenState extends State<ReportScreen> {
                               );
                             }
                             final index = i ~/ 2;
-                            return _ReportTxTile(item: items[index]);
+                            return _ReportTxTile(
+                              item: items[index],
+                              menuEnabled: !vm.isLoading,
+                            );
                           },
                           childCount: items.length * 2 - 1,
                         ),
@@ -1076,7 +1075,7 @@ class _SheetChip extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           if (icon != null) ...[
-            Icon(icon, size: 16, color: selected ? Colors.white : AppColors.textSoft),
+            Icon(icon, size: 16, color: selected ? AppColors.onAccent : AppColors.textSoft),
             const SizedBox(width: 6),
           ],
           Text(label),
@@ -1085,9 +1084,9 @@ class _SheetChip extends StatelessWidget {
       selected: selected,
       onSelected: (_) => onTap(),
       selectedColor: AppColors.primary,
-      checkmarkColor: Colors.white,
+      checkmarkColor: AppColors.onAccent,
       labelStyle: GoogleFonts.sora(
-        color: selected ? Colors.white : AppColors.text,
+        color: selected ? AppColors.onAccent : AppColors.text,
         fontWeight: FontWeight.w600,
         fontSize: 13,
       ),
@@ -1153,9 +1152,13 @@ Color _iconFgForTransaction(TransactionEntry t) {
 }
 
 class _ReportTxTile extends StatelessWidget {
-  const _ReportTxTile({required this.item});
+  const _ReportTxTile({
+    required this.item,
+    required this.menuEnabled,
+  });
 
   final TransactionEntry item;
+  final bool menuEnabled;
 
   @override
   Widget build(BuildContext context) {
@@ -1167,77 +1170,137 @@ class _ReportTxTile extends StatelessWidget {
     final bg = _iconBgForTransaction(item);
     final fg = _iconFgForTransaction(item);
 
+    final amountText =
+        '${item.isCredit ? '+' : '-'} ${CurrencyFormatter.formatRupee(item.amount)}';
+
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 10),
+      padding: const EdgeInsets.only(top: 10, bottom: 10, right: 2),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: bg,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(icon, color: fg, size: 22),
-          ),
-          const SizedBox(width: 12),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  item.title,
-                  style: GoogleFonts.sora(
-                    color: AppColors.textPrimary,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 15,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 4,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 2,
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: () => showTransactionDetailSheet(context, item),
+                borderRadius: BorderRadius.circular(12),
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 2, bottom: 2, right: 4),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: 48,
+                        height: 48,
+                        decoration: BoxDecoration(
+                          color: bg,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Icon(icon, color: fg, size: 22),
                       ),
-                      decoration: BoxDecoration(
-                        color: AppColors.surface2,
-                        borderRadius: BorderRadius.circular(6),
-                        border: Border.all(color: AppColors.border),
-                      ),
-                      child: Text(
-                        cat,
-                        style: GoogleFonts.sora(
-                          fontSize: 11,
-                          color: AppColors.textSoft,
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              item.title,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.sora(
+                                color: AppColors.textPrimary,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 15,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Flexible(
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 2,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: AppColors.surface2,
+                                      borderRadius: BorderRadius.circular(6),
+                                      border: Border.all(color: AppColors.border),
+                                    ),
+                                    child: Text(
+                                      cat,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: GoogleFonts.sora(
+                                        fontSize: 11,
+                                        color: AppColors.textSoft,
+                                        height: 1.25,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 2),
+                                  child: Text(
+                                    dateStr,
+                                    style: GoogleFonts.sora(
+                                      fontSize: 11,
+                                      color: AppColors.textMuted,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
                         ),
                       ),
-                    ),
-                    Text(
-                      dateStr,
-                      style: GoogleFonts.sora(
-                        fontSize: 11,
-                        color: AppColors.textMuted,
+                      const SizedBox(width: 4),
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text(
+                          amountText,
+                          style: GoogleFonts.jetBrainsMono(
+                            color: color,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 15,
+                          ),
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ],
+              ),
             ),
           ),
-          const SizedBox(width: 8),
-          Text(
-            '${item.isCredit ? '+' : '-'} ${CurrencyFormatter.formatRupee(item.amount)}',
-            style: GoogleFonts.jetBrainsMono(
-              color: color,
-              fontWeight: FontWeight.w700,
-              fontSize: 15,
+          PopupMenuButton<String>(
+            enabled: menuEnabled,
+            icon: Icon(
+              Icons.more_vert_rounded,
+              size: 22,
+              color: AppColors.textMuted,
             ),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(
+              minWidth: 40,
+              minHeight: 40,
+            ),
+            onSelected: (v) {
+              if (v == 'edit') openEditTransaction(context, item);
+              if (v == 'delete') confirmDeleteTransaction(context, item);
+            },
+            itemBuilder: (ctx) => const [
+              PopupMenuItem(
+                value: 'edit',
+                child: Text('Edit'),
+              ),
+              PopupMenuItem(
+                value: 'delete',
+                child: Text('Delete'),
+              ),
+            ],
           ),
         ],
       ),

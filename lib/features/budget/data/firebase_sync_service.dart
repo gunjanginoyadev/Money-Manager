@@ -6,6 +6,8 @@ import 'package:flutter/foundation.dart';
 import '../../../core/config/app_env.dart';
 import '../domain/models/budget_profile.dart';
 import '../domain/models/expense_entry.dart';
+import '../domain/models/saving_entry.dart';
+import '../domain/models/saving_goal.dart';
 import '../domain/models/transaction_entry.dart';
 
 class FirebaseSyncService {
@@ -199,6 +201,17 @@ class FirebaseSyncService {
     );
   }
 
+  Future<void> clearSavingEntries() async {
+    if (!isReady) return;
+    final userId = _userId!;
+    await _deleteAllDocsInCollection(
+      FirebaseFirestore.instance
+          .collection('users')
+          .doc(userId)
+          .collection('saving_entries'),
+    );
+  }
+
   /// Deletes all Firestore data under [users/{uid}], then deletes the Firebase Auth user.
   ///
   /// [password] is required for email/password accounts: Firebase must verify the user
@@ -234,6 +247,8 @@ class FirebaseSyncService {
 
     await _deleteAllDocsInCollection(userRef.collection('expenses'));
     await _deleteAllDocsInCollection(userRef.collection('transactions'));
+    await _deleteAllDocsInCollection(userRef.collection('saving_entries'));
+    await _deleteAllDocsInCollection(userRef.collection('goal'));
 
     await userRef.delete();
     await user.delete();
@@ -260,6 +275,76 @@ class FirebaseSyncService {
         .collection('transactions')
         .doc(transaction.id)
         .set(transaction.toJson(), SetOptions(merge: true));
+  }
+
+  Future<void> upsertSavingGoal(SavingGoal goal) async {
+    if (!isReady) return;
+    final userId = _userId!;
+    await FirebaseFirestore.instance
+        .collection('users')
+        .doc(userId)
+        .collection('goal')
+        .doc('active')
+        .set(goal.toJson(), SetOptions(merge: true));
+  }
+
+  Future<void> clearSavingGoal() async {
+    if (!isReady) return;
+    final userId = _userId!;
+    await FirebaseFirestore.instance
+        .collection('users')
+        .doc(userId)
+        .collection('goal')
+        .doc('active')
+        .delete();
+  }
+
+  Future<SavingGoal?> fetchRemoteSavingGoal() async {
+    if (!isReady) return null;
+    final doc = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(_userId!)
+        .collection('goal')
+        .doc('active')
+        .get();
+    final data = doc.data();
+    if (data == null) return null;
+    return SavingGoal.fromJson(data);
+  }
+
+  Future<void> upsertSavingEntry(SavingEntry entry) async {
+    if (!isReady) return;
+    final userId = _userId!;
+    await FirebaseFirestore.instance
+        .collection('users')
+        .doc(userId)
+        .collection('saving_entries')
+        .doc(entry.id)
+        .set(entry.toJson(), SetOptions(merge: true));
+  }
+
+  Future<void> removeSavingEntry(String entryId) async {
+    if (!isReady) return;
+    final userId = _userId!;
+    await FirebaseFirestore.instance
+        .collection('users')
+        .doc(userId)
+        .collection('saving_entries')
+        .doc(entryId)
+        .delete();
+  }
+
+  Future<List<SavingEntry>> fetchRemoteSavingEntries() async {
+    if (!isReady) return const [];
+    final snapshot = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(_userId!)
+        .collection('saving_entries')
+        .get();
+    return snapshot.docs
+        .map((doc) => SavingEntry.fromJson(doc.data()))
+        .toList()
+      ..sort((a, b) => b.date.compareTo(a.date));
   }
 
   Future<void> removeTransaction(String transactionId) async {

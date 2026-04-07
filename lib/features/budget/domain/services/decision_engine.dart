@@ -15,35 +15,31 @@ class DecisionEngine {
     ).format(n);
   }
 
-  /// When **N** is unset (0), pace across ~one “outing” per **calendar week** still
-  /// left in the month so early-month suggestions do not use the full **R** at once.
-  static int inferredWeeklySlotsRemainingInMonth([DateTime? now]) {
-    final today = now ?? DateTime.now();
-    final last = DateTime(today.year, today.month + 1, 0);
-    final daysLeft = last.day - today.day + 1;
-    if (daysLeft <= 0) return 1;
-    return math.max(1, (daysLeft / 7.0).ceil());
+  /// When **N** is unset (0), pace across ~one “outing” per week still left in the **budget period**.
+  static int inferredWeeklySlotsFromDaysLeft(int daysLeftInBudgetPeriod) {
+    if (daysLeftInBudgetPeriod <= 0) return 1;
+    return math.max(1, (daysLeftInBudgetPeriod / 7.0).ceil());
   }
 
-  /// Uses your **N** when it is set (positive); otherwise [inferredWeeklySlotsRemainingInMonth].
+  /// Uses your **N** when it is set (positive); otherwise [inferredWeeklySlotsFromDaysLeft].
   static int effectiveOutingCountForPacing({
     required int outingsRemaining,
-    DateTime? now,
+    required int daysLeftInBudgetPeriod,
   }) {
     if (outingsRemaining > 0) return outingsRemaining;
-    return inferredWeeklySlotsRemainingInMonth(now);
+    return inferredWeeklySlotsFromDaysLeft(daysLeftInBudgetPeriod);
   }
 
   /// Single-purchase cap: min(remaining Wants **R**, **(R÷effectiveN)×0.8**).
   static double suggestedSpendCap({
     required double remainingWants,
     required int outingsRemaining,
-    DateTime? now,
+    required int daysLeftInBudgetPeriod,
   }) {
     if (remainingWants <= 0) return 0;
     final n = effectiveOutingCountForPacing(
       outingsRemaining: outingsRemaining,
-      now: now,
+      daysLeftInBudgetPeriod: daysLeftInBudgetPeriod,
     );
     final perBuffered = (remainingWants / n) * 0.8;
     return math.min(remainingWants, perBuffered);
@@ -55,6 +51,7 @@ class DecisionEngine {
     required double spentThisMonth,
     required double newExpense,
     required int outingsRemaining,
+    required int daysLeftInBudgetPeriod,
     String expenseLabel = 'This expense',
     DateTime? now,
   }) {
@@ -64,23 +61,22 @@ class DecisionEngine {
         remainingBalance: 0,
         endOfMonthProjection: 0,
         message:
-            'Your Wants target (30% of income) is zero. Log income this month or adjust the 50-30-20 baseline on Home.',
+            'Your Wants target (30% of income) is zero. Log income in this budget period or adjust the 50-30-20 baseline on Home.',
         availableBefore: 0,
         expenseAmount: newExpense,
         suggestedSpendCap: null,
       );
     }
 
-    final clock = now ?? DateTime.now();
     final availableBefore = monthlySpendBudget - spentThisMonth;
     final effectiveN = DecisionEngine.effectiveOutingCountForPacing(
       outingsRemaining: outingsRemaining,
-      now: clock,
+      daysLeftInBudgetPeriod: daysLeftInBudgetPeriod,
     );
     final suggestedCap = DecisionEngine.suggestedSpendCap(
       remainingWants: availableBefore,
       outingsRemaining: outingsRemaining,
-      now: clock,
+      daysLeftInBudgetPeriod: daysLeftInBudgetPeriod,
     );
     final remaining = availableBefore - newExpense;
     final projection = remaining;
@@ -98,7 +94,7 @@ class DecisionEngine {
         message:
             '"$expenseLabel" (${_fmt(newExpense)}) is ${_fmt(over)} more than you have left in your Wants budget (${_fmt(availableBefore)}). '
             'Try to keep similar spends to about ${_fmt(suggestedCap)} or less '
-            '${outingsRemaining > 0 ? 'for each of your $outingsRemaining planned outing(s).' : '(we spread what is left across about $effectiveN week(s) until you add how many outings you expect on the Spend tab).'}.',
+            '${outingsRemaining > 0 ? 'for each of your $outingsRemaining planned outing(s).' : '(we spread what is left across about $effectiveN week(s) in this budget period until you add how many outings you expect on the Spend tab).'}.',
       );
     }
 
@@ -106,7 +102,7 @@ class DecisionEngine {
       final overPreferred = newExpense - suggestedCap;
       final pacingHint = outingsRemaining > 0
           ? 'based on $outingsRemaining outing(s) you said you have left'
-          : 'based on the weeks left this month — add your outing count on the Spend tab for a tighter number';
+          : 'based on the weeks left in this budget period — add your outing count on the Spend tab for a tighter number';
       return ExpenseDecision(
         status: DecisionStatus.okay,
         remainingBalance: remaining,
@@ -116,7 +112,7 @@ class DecisionEngine {
         suggestedSpendCap: suggestedCap,
         message:
             '"$expenseLabel" (${_fmt(newExpense)}) fits your overall Wants budget, but it is ${_fmt(overPreferred)} above a comfortable single amount of about ${_fmt(suggestedCap)} ($pacingHint). '
-            'If you can, aim closer to ${_fmt(suggestedCap)} so the rest of the month is easier.',
+            'If you can, aim closer to ${_fmt(suggestedCap)} so the rest of this budget period is easier.',
       );
     }
 

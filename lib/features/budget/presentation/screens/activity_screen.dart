@@ -9,7 +9,7 @@ import '../../../../core/utils/currency_formatter.dart';
 import '../../../../core/utils/month_utils.dart';
 import '../../domain/models/transaction_entry.dart';
 import '../viewmodels/budget_view_model.dart';
-import '../widgets/add_transaction_sheet.dart';
+import 'add_transaction_screen.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/loading_state.dart';
 
@@ -18,11 +18,10 @@ class ActivityScreen extends StatelessWidget {
   const ActivityScreen({super.key});
 
   static void _openAddSheet(BuildContext context) {
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => const AddTransactionSheet(),
+    Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => const AddTransactionScreen(),
+      ),
     );
   }
 

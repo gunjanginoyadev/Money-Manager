@@ -1,112 +1,147 @@
 # Money Manager
 
-**Money Manager** is a cross-platform **Flutter** app (Android & web) for personal budgeting: track income and spending, see safe-to-spend at a glance, and get clear guidance before discretionary purchases.
+A **Flutter** personal finance app for **Android** and **web**: track income and expenses, follow a **50 / 30 / 20** view, and get plain-language guidance on **how much you can safely spend** on wants—especially before discretionary purchases.
 
-It is built as a **local-first** experience with **optional Firebase** (Firestore + Auth) for sync and backup when configured.
-
----
-
-## At a glance (for recruiters)
-
-| Area | Details |
-|------|---------|
-| **Platform** | Flutter 3.x · Dart 3.x · Material 3 dark UI |
-| **State** | `provider` · `ChangeNotifier` view models |
-| **Persistence** | `shared_preferences` (JSON) · optional Firestore sync |
-| **Backend** | Firebase Auth (email/password) · Cloud Firestore · security rules in-repo |
-| **Notable libs** | `intl`, `google_fonts`, `uuid`, `pdf` / `printing` (reports) |
-
-The codebase is organized by **feature** (`lib/features/budget/`) with separation between **presentation**, **domain** models, and **data** (local + remote).
+Optional **Firebase** (Auth + Firestore) backs sign-in and cloud data when configured.
 
 ---
 
-## What it does
+## Current features
 
-- **Onboarding & profile** — Monthly income, fixed costs (EMI, rent, bills), essentials, safety buffer; editable profile with avatar options.
-- **Home** — Net balance, month income/expense summary, **50 / 30 / 20** breakdown vs targets, recent transactions, quick add.
-- **Report** — Filterable activity by month or custom range, categories, **PDF export**.
-- **Spend (Plan)** — “Can I spend?” hero, obligations snapshot, afford-a-purchase flow, monthly outlook; **effective income** respects profile + tracked credits, spending reduces availability.
-- **Transactions** — Debits/credits, categories, spending kinds (needs/wants/savings), payment method, optional sync to Firestore.
-- **Account** — Email sign-in, optional cloud restore, **log out**, **delete account** (re-authenticates then removes Firestore data + Auth user + local storage).
+Below is what the app implements today (main user-visible behavior).
 
-Offline usage works without Firebase; cloud features activate when `.env` is filled and rules are deployed.
+### App entry, connectivity, and shell
+
+- **Network gate** — On launch, the app checks connectivity; if there is no usable connection, a **no internet** screen is shown until the network returns, then data loading continues (`connectivity_plus`).
+- **Bootstrap loading** — A loading state runs while budget data and session state initialize.
+- **Authentication (optional)** — If Firebase is configured and the user has not chosen local-only mode, an **email + password** sign-in / registration screen is shown (branded “Kharcha” on that screen; the app title elsewhere is **Money Manager**).
+- **First-time onboarding** — New users without a profile complete a short setup (monthly income, EMI). **Wide layouts** (e.g. web) use a **split view** with a sidebar; narrow layouts use a single scrolling form.
+- **Main navigation** — Four tabs: **Home**, **Report**, **Spend**, **Profile** (bottom bar). Some actions jump to another tab (e.g. “View all in Report” from Home).
+- **Feedback** — Success and error messages from the budget layer surface as **toasts** (`BudgetMessageToastListener`).
+
+### Home
+
+- **Month context** — Banner showing which calendar month is in scope; figures are **this month only**.
+- **This month liquidity** — Card summarizing money in, money out, and net-style breakdown for the current month (`LiquidityBreakdownCard`).
+- **Lifetime net** — Single line for **all-time** credits minus debits across every month.
+- **50 / 30 / 20** — Visual breakdown of **Needs**, **Wants**, and **Savings** vs targets, with a **baseline mode** you can switch:
+  - **Profile salary** — from your saved monthly income,
+  - **Month income entries** — sum of income transactions logged this month (default),
+  - **Spend pool** — 20% of profile salary (aligned with optional “spend pool” thinking).
+- **Recent activity** — Up to **five** recent transactions for the current month.
+- **Quick add** — **+** opens a bottom sheet to add a transaction (see **Transactions** below).
+- **Deep link to Report** — Button to open the **Report** tab for full history.
+
+### Transactions (add / edit flow)
+
+- Opened from Home **+** (and from Report where applicable).
+- **Type** — **Expense** or **Income**.
+- **Date** — Transaction date (not only “today”).
+- **Expenses** — **Spending kind**: Need, Want, Saving, or Other; **subcategory** lists depend on the kind chosen. **Want**-tagged spending feeds the same **Wants** bucket used on Home and Spend.
+- **Income** — **Income category** (e.g. salary, freelance).
+- **Payment method** — **Online** vs **cash**.
+- **Note** — Optional text.
+- Amounts and dates use **Indian Rupees** and **en_IN**-style formatting in the UI.
+
+### Report
+
+- **Period** — View by **single month** (previous/next month; cannot go past the current month) **or** a **custom start–end date range**.
+- **Filters** — Narrow by **Needs / Wants / Savings** (for expenses) and by **Income** vs **Expense**; optional **full filter** sheet.
+- **List** — Chronological transaction list for the selected period (with empty/loading states).
+- **Liquidity-style summary** — Same family of month summary UI as Home where applicable.
+- **Export** — **Download as PDF** for the current report selection (`pdf` + `printing`).
+
+### Spend (“Can I spend?”)
+
+- **Monthly Wants summary** — **This month’s Wants budget**, **spent so far** (want-tagged), **remaining**, and a short **status** (on track / low / over / needs baseline).
+- **Outing planning** — Optional **how many outings you still plan** this month; **Save** persists it on your profile. Shows **comfortable per outing** and a **safer target**; if you don’t enter a count, the app **paces** against roughly **one slot per week** left in the month.
+- **Check a price** — On the **same tab**: enter a rupee amount, optional label, quick category chips, **Check now** — result states such as **safe**, **review** (tight or above comfortable single-outing amount), or **not safe**, with **suggested spend** when relevant and a short breakdown (left before expense, expense, remaining after).
+
+### Profile & account
+
+- **Avatar** — Pick from a grid of preset icons/colors; saves to profile.
+- **Account** — Shows **signed-in email** when using Firebase, or a not-signed-in hint.
+- **Log out** — Signs out of Firebase (with confirmation where used).
+- **Delete account** — Destructive flow with confirmation (re-auth + cloud/local cleanup per implementation).
+- **Reference numbers** — Edit **monthly salary** and **EMI / loans**; a read-only line shows **Wants budget from salary (30%)** as a reference. Other profile fields (e.g. rent, bills) exist in the **data model** and onboarding defaults for future use.
+- **Save changes** — Persists profile updates.
+
+### Budget logic (what powers “Spend” and Home Wants)
+
+- **Decision engine** — Evaluates hypothetical spends against remaining **Wants** (30% of the active baseline minus **want**-tagged debits this month).
+- **Suggested single purchase** — Combines remaining Wants, your **saved outing count**, and **calendar pacing** when the count is not set—see `DecisionEngine` / `BudgetViewModel` for details.
+
+### Cloud (when Firebase is configured)
+
+- **Firebase Auth** — Email/password.
+- **Cloud Firestore** — Sync for profile/transactions per your rules (`firestore.rules`).
+- Config is supplied through **`lib/core/config/app_env.dart`** (`AppEnv`), not only `.env` files.
 
 ---
 
 ## Tech stack
 
-- **Flutter** — UI, routing, responsive layouts (e.g. shell + bottom navigation).
-- **Provider** — App-wide `BudgetViewModel` + repository injection.
-- **SharedPreferences** — Profile, expenses, transactions, auth mode.
-- **Firebase** (optional) — `firebase_core`, `cloud_firestore`, `firebase_auth`; init via `flutter_dotenv` + `FirebaseOptions` (no `google-services.json` required for the current Dart init path).
-- **Other** — `intl` (currency / dates), `google_fonts`, `pdf` + `printing` for exports.
+| Layer | Choice |
+|--------|--------|
+| **Framework** | Flutter (Material 3, dark theme by default) |
+| **Language** | Dart 3 (`sdk: ^3.10` in `pubspec.yaml`) |
+| **State** | `provider` + `ChangeNotifier` (`BudgetViewModel`) |
+| **Local** | `shared_preferences` for session/auth mode and lightweight local needs |
+| **Cloud (optional)** | `firebase_core`, `firebase_auth`, `cloud_firestore` |
+| **Other** | `intl` (₹ / dates), `google_fonts`, `uuid`, `pdf` / `printing`, `connectivity_plus` |
 
 ---
 
-## Project layout (high level)
+## Project structure
 
 ```text
 lib/
-  app.dart                 # MaterialApp, providers
-  core/                    # Theme, layout, toasts, PDF helpers, config
+  app.dart                    # MaterialApp, Provider tree, connectivity gate
+  main.dart                   # Entry, date formatting (en_IN)
+  core/
+    config/                   # App branding, environment / Firebase config (see below)
+    theme/, layout/, widgets/  # Shared UI and shell helpers
   features/budget/
-    data/                  # Local datasource, repository, Firebase sync
-    domain/                # Models, decision engine (safe / okay / not safe)
-    presentation/          # Screens, widgets, view models
+    data/                     # Repository, local datasource, Firebase sync
+    domain/                   # Models, decision engine, expense decisions
+    presentation/             # Screens, widgets, view models
 ```
+
+Firebase options are wired in code via **`lib/core/config/app_env.dart`** (`AppEnv`). Adjust keys there for your own Firebase project (or keep defaults only for local development—use your own project in production).
 
 ---
 
 ## Prerequisites
 
-- [Flutter SDK](https://docs.flutter.dev/get-started/install) (stable), Dart SDK as pinned in `pubspec.yaml`
-- For Android: Android Studio / SDK; for web: Chrome
+- [Flutter](https://docs.flutter.dev/get-started/install) (stable), matching the SDK constraint in `pubspec.yaml`
+- For Android: Android SDK / emulator or device
+- For web: Chrome (or another supported browser)
 
 ---
 
 ## Quick start
 
 ```bash
-git clone <your-fork-or-repo-url>
-cd money_manager
+git clone <repository-url>
+cd Money-Manager
 flutter pub get
+flutter run -d chrome          # web
+flutter run -d android         # Android
 ```
 
-### Environment (optional Firebase)
+### Firebase (optional)
 
-1. Copy `.env.example` to `.env`.
-2. Add your Firebase web app keys from the Firebase console (Project settings → Your apps).
+1. Create a Firebase project and enable **Authentication → Email/Password** (and any providers you need).
+2. Create **Cloud Firestore** and deploy security rules (see `firestore.rules` in this repo).
+3. Put your web/Android app credentials into **`lib/core/config/app_env.dart`** so `AppEnv.isFirebaseConfigured` is true, or replace values with your project’s keys.
 
-```env
-FIREBASE_API_KEY=
-FIREBASE_APP_ID=
-FIREBASE_MESSAGING_SENDER_ID=
-FIREBASE_PROJECT_ID=
-FIREBASE_AUTH_DOMAIN=
-FIREBASE_STORAGE_BUCKET=
-FIREBASE_MEASUREMENT_ID=
-```
+Without valid Firebase config, sign-in and cloud sync paths stay disabled; the UI still loads for local exploration depending on implementation.
 
-3. Enable **Authentication → Email/Password** (and any providers you use).
-4. Create **Cloud Firestore** and deploy rules from `firestore.rules`.
-
-Without a valid `.env`, the app still runs in **local-only** mode.
-
-### Run
+### Analysis & tests
 
 ```bash
-# Web
-flutter run -d chrome
-
-# Android (device or emulator)
-flutter run -d android
-```
-
-### Tests & analysis
-
-```bash
-flutter test
 dart analyze lib
+flutter test
 ```
 
 ### Release APK
@@ -117,43 +152,28 @@ flutter build apk --release
 
 ---
 
-## Deploy on Vercel
+## Deploying the web build (e.g. Vercel)
 
-The repo includes **`vercel.json`** and **`build.sh`** so you can host the Flutter **web** build as static files.
+The repo includes **`vercel.json`** and **`build.sh`** for static hosting of `build/web`.
 
-1. Import the Git repo in [Vercel](https://vercel.com) (or use the CLI).
-2. **Framework preset**: Other (or leave auto-detect off).
-3. **Build command**: `bash build.sh` (already set in `vercel.json`).
-4. **Output directory**: `build/web` (already set in `vercel.json`).
-5. **Install command**: leave empty (no `package.json`); Flutter is installed inside `build.sh` via a shallow `stable` SDK clone into `.flutter_sdk/` (gitignored).
-
-`build.sh` ensures a **`.env` file exists** (required by `pubspec.yaml` assets). If you add Firebase variables in **Vercel → Project → Settings → Environment Variables** using the same names as `.env.example`, the script writes a real `.env` at build time so the web bundle can talk to Firebase.
-
-`vercel.json` **rewrites** unknown paths to `index.html` so Flutter’s client-side routing works after refresh.
-
-**Note:** First builds clone Flutter and can take several minutes. If a build hits the time limit, upgrade the Vercel plan or add a [remote build cache](https://vercel.com/docs/deployments/troubleshoot-a-build) strategy for `.flutter_sdk` (advanced).
+- **Build command:** `bash build.sh` (installs a shallow Flutter stable SDK under `.flutter_sdk/` if needed, then `flutter build web --release`).
+- **Output directory:** `build/web`
+- **`build.sh`** can create a minimal `.env` from Vercel environment variables when deploying (see script comments).
 
 ---
 
-## Budget decision logic (summary)
+## Budget & spend logic (reference)
 
-Disposable headroom is derived from **effective monthly income** (profile baseline vs tracked credits, without double-counting salary), minus **obligations**, minus **spending already recorded this month**, then compared to the **safety buffer** for SAFE / OKAY / NOT SAFE outcomes. See `DecisionEngine` and `BudgetViewModel` in `lib/features/budget/`.
-
----
-
-## Firebase & cost notes
-
-- Uses **Firestore** and **Firebase Auth** only (no Cloud Functions required for core flows).
-- Fits typical **Spark (free)** usage for personal / demo workloads; monitor quotas in production.
+The **Current features** section above summarizes behavior. Implementation: `lib/features/budget/domain/services/decision_engine.dart` and `lib/features/budget/presentation/viewmodels/budget_view_model.dart`.
 
 ---
 
 ## License
 
-This repository is private / unpublished (`publish_to: 'none'` in `pubspec.yaml`). Add a `LICENSE` file if you open-source the project.
+`publish_to: 'none'` in `pubspec.yaml` — not published to pub.dev. Add a `LICENSE` file if you open-source the project.
 
 ---
 
-## Contact
+## Contributing / contact
 
-For collaboration or hiring context, link your portfolio, LinkedIn, or email in your fork’s **About** section or this README as appropriate.
+Use issues and pull requests on your hosting platform; add portfolio or contact links in the repository **About** section as needed.

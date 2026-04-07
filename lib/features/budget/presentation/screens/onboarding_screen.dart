@@ -22,11 +22,13 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   final _formKey = GlobalKey<FormState>();
   final _incomeController = TextEditingController();
   final _emiController = TextEditingController(text: '0');
+  final _paydayController = TextEditingController(text: '1');
 
   @override
   void dispose() {
     _incomeController.dispose();
     _emiController.dispose();
+    _paydayController.dispose();
     super.dispose();
   }
 
@@ -59,6 +61,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                         formKey: _formKey,
                         incomeController: _incomeController,
                         emiController: _emiController,
+                        paydayController: _paydayController,
                         onSave: _save,
                       ),
                     ),
@@ -70,6 +73,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   formKey: _formKey,
                   incomeController: _incomeController,
                   emiController: _emiController,
+                  paydayController: _paydayController,
                   onSave: _save,
                 ),
         );
@@ -80,6 +84,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   Future<void> _save() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
     final vm = context.read<BudgetViewModel>();
+    final pd = int.tryParse(_paydayController.text.trim()) ?? 1;
     await vm.saveProfile(
       BudgetProfile(
         monthlyIncome: double.tryParse(_incomeController.text) ?? 0,
@@ -91,6 +96,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         monthlySpendPool: 0,
         avatarIndex: 0,
         remainingOutingsCount: 0,
+        salaryDayOfMonth: pd.clamp(1, 31),
       ),
     );
   }
@@ -208,6 +214,7 @@ class _ScrollableOnboardingForm extends StatelessWidget {
     required this.formKey,
     required this.incomeController,
     required this.emiController,
+    required this.paydayController,
     required this.onSave,
   });
 
@@ -216,6 +223,7 @@ class _ScrollableOnboardingForm extends StatelessWidget {
   final GlobalKey<FormState> formKey;
   final TextEditingController incomeController;
   final TextEditingController emiController;
+  final TextEditingController paydayController;
   final VoidCallback onSave;
 
   @override
@@ -294,6 +302,38 @@ class _ScrollableOnboardingForm extends StatelessWidget {
             label: 'EMI / loans / debts (total)',
             icon: Icons.account_balance_rounded,
             iconColor: AppColors.debit,
+          ),
+          const SizedBox(height: 22),
+          const _SectionLabel('WHEN DO YOU GET PAID?'),
+          const SizedBox(height: 6),
+          Text(
+            'Your budget period starts on this day each month (e.g. 1 = 1st of every month). We use shorter months automatically if needed (e.g. day 31 in February).',
+            style: GoogleFonts.sora(
+              fontSize: 12,
+              height: 1.45,
+              color: AppColors.textSecondary,
+            ),
+          ),
+          const SizedBox(height: 10),
+          TextFormField(
+            controller: paydayController,
+            keyboardType: TextInputType.number,
+            style: const TextStyle(color: AppColors.textPrimary),
+            decoration: InputDecoration(
+              labelText: 'Salary day of month',
+              hintText: '1–31',
+              prefixIcon: Icon(
+                Icons.event_rounded,
+                color: AppColors.primary,
+                size: 18,
+              ),
+            ),
+            validator: (value) {
+              final v = int.tryParse(value?.trim() ?? '');
+              if (v == null) return 'Enter a day 1–31';
+              if (v < 1 || v > 31) return 'Use a day between 1 and 31';
+              return null;
+            },
           ),
           const SizedBox(height: 28),
           SizedBox(

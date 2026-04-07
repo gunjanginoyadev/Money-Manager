@@ -11,6 +11,10 @@ class BudgetProfile {
     this.monthlySpendPool = 0,
     this.avatarIndex = 0,
     this.remainingOutingsCount = 0,
+    this.salaryDayOfMonth = 1,
+    this.splitNeeds = 0.5,
+    this.splitWants = 0.3,
+    this.splitSavings = 0.2,
   });
 
   final double monthlyIncome;
@@ -28,6 +32,14 @@ class BudgetProfile {
 
   /// Planned **wants** outings/events left this month (**N** in R÷N). Edited on the Spend tab.
   final int remainingOutingsCount;
+
+  /// Day of month salary lands (1–31). Budget periods start on this day; default **1** (calendar month).
+  final int salaryDayOfMonth;
+
+  /// Needs / Wants / Savings shares of income baseline (should sum to **1.0**). Defaults 50% / 30% / 20%.
+  final double splitNeeds;
+  final double splitWants;
+  final double splitSavings;
 
   /// **20% of [monthlyIncome]** — used only for the optional 50-30-20 “Spend pool” baseline on Home.
   double get spendBudgetFromIncome =>
@@ -50,9 +62,26 @@ class BudgetProfile {
         'monthlySpendPool': monthlySpendPool,
         'avatarIndex': avatarIndex,
         'remainingOutingsCount': remainingOutingsCount,
+        'salaryDayOfMonth': salaryDayOfMonth,
+        'splitNeeds': splitNeeds,
+        'splitWants': splitWants,
+        'splitSavings': splitSavings,
       };
 
   factory BudgetProfile.fromJson(Map<String, dynamic> json) {
+    var sn = (json['splitNeeds'] as num?)?.toDouble() ?? 0.5;
+    var sw = (json['splitWants'] as num?)?.toDouble() ?? 0.3;
+    var ss = (json['splitSavings'] as num?)?.toDouble() ?? 0.2;
+    final sum = sn + sw + ss;
+    if (sum < 0.001) {
+      sn = 0.5;
+      sw = 0.3;
+      ss = 0.2;
+    } else {
+      sn /= sum;
+      sw /= sum;
+      ss /= sum;
+    }
     return BudgetProfile(
       monthlyIncome: (json['monthlyIncome'] as num?)?.toDouble() ?? 0,
       emi: (json['emi'] as num?)?.toDouble() ?? 0,
@@ -64,6 +93,10 @@ class BudgetProfile {
       avatarIndex: (json['avatarIndex'] as num?)?.toInt() ?? 0,
       remainingOutingsCount:
           (json['remainingOutingsCount'] as num?)?.toInt() ?? 0,
+      salaryDayOfMonth: (json['salaryDayOfMonth'] as num?)?.toInt() ?? 1,
+      splitNeeds: sn,
+      splitWants: sw,
+      splitSavings: ss,
     );
   }
 
@@ -77,6 +110,10 @@ class BudgetProfile {
     double? monthlySpendPool,
     int? avatarIndex,
     int? remainingOutingsCount,
+    int? salaryDayOfMonth,
+    double? splitNeeds,
+    double? splitWants,
+    double? splitSavings,
   }) {
     return BudgetProfile(
       monthlyIncome: monthlyIncome ?? this.monthlyIncome,
@@ -89,8 +126,16 @@ class BudgetProfile {
       avatarIndex: avatarIndex ?? this.avatarIndex,
       remainingOutingsCount:
           remainingOutingsCount ?? this.remainingOutingsCount,
+      salaryDayOfMonth: salaryDayOfMonth ?? this.salaryDayOfMonth,
+      splitNeeds: splitNeeds ?? this.splitNeeds,
+      splitWants: splitWants ?? this.splitWants,
+      splitSavings: splitSavings ?? this.splitSavings,
     );
   }
+
+  /// Wants cap used on Profile preview (matches Home / Spend).
+  double wantsCapFromIncome(double income) =>
+      income > 0 ? income * splitWants : 0;
 }
 
 /// Predefined avatar styles (icon + accent). No assets required.

@@ -101,7 +101,7 @@ class _TopBar extends StatelessWidget {
   }
 }
 
-/// This month’s Wants budget, spent so far, and remaining — no formulas.
+/// Current budget period Wants budget, spent so far, and remaining — no formulas.
 class _MonthlyWantsSummary extends StatelessWidget {
   const _MonthlyWantsSummary({
     required this.hasBaseline,
@@ -158,7 +158,7 @@ class _MonthlyWantsSummary extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'This month (Wants)',
+            'This budget period (Wants)',
             style: GoogleFonts.sora(
               fontSize: 13,
               fontWeight: FontWeight.w700,
@@ -177,7 +177,7 @@ class _MonthlyWantsSummary extends StatelessWidget {
             )
           else ...[
             _summaryRow(
-              'This month’s budget',
+              'Wants budget (this period)',
               CurrencyFormatter.formatRupee(monthlyBudget),
               emphasize: false,
             ),
@@ -326,16 +326,21 @@ class _OutingPlansCardState extends State<_OutingPlansCard> {
 
   @override
   Widget build(BuildContext context) {
+    final vm = context.watch<BudgetViewModel>();
+    final daysLeft = vm.daysLeftInCurrentBudgetPeriod;
     final effectiveN = BudgetViewModel.effectiveOutingCountForPacing(
       outingsRemaining: _plansParsed,
+      daysLeftInBudgetPeriod: daysLeft,
     );
     final comfortable = BudgetViewModel.maxPerOutingWants(
       remainingWants: widget.remaining,
       outingsRemaining: _plansParsed,
+      daysLeftInBudgetPeriod: daysLeft,
     );
     final safer = BudgetViewModel.bufferedMaxPerOutingWants(
       remainingWants: widget.remaining,
       outingsRemaining: _plansParsed,
+      daysLeftInBudgetPeriod: daysLeft,
     );
 
     return Container(
@@ -376,7 +381,7 @@ class _OutingPlansCardState extends State<_OutingPlansCard> {
               color: AppColors.text,
             ),
             decoration: InputDecoration(
-              labelText: 'Outings left this month',
+              labelText: 'Outings left this budget period',
               hintText: 'e.g. 4',
               hintStyle: TextStyle(
                 color: AppColors.textMuted.withValues(alpha: 0.6),
@@ -407,7 +412,7 @@ class _OutingPlansCardState extends State<_OutingPlansCard> {
           const SizedBox(height: 14),
           if (_plansParsed <= 0 && widget.remaining > 0)
             Text(
-              'No number saved yet — we’re pacing what’s left across about $effectiveN week(s) in this month. Add a count above for amounts tailored to you.',
+              'No number saved yet — we’re pacing what’s left across about $effectiveN week(s) in this budget period. Add a count above for amounts tailored to you.',
               style: GoogleFonts.sora(
                 fontSize: 12,
                 height: 1.35,
@@ -416,7 +421,7 @@ class _OutingPlansCardState extends State<_OutingPlansCard> {
             )
           else if (widget.remaining < 0)
             Text(
-              'You’re already over this month’s Wants budget. Fix spending or adjust income on Home before planning outings here.',
+              'You’re already over this budget period’s Wants budget. Fix spending or adjust income on Home before planning outings here.',
               style: GoogleFonts.sora(fontSize: 12, color: AppColors.danger),
             )
           else if (comfortable != null && safer != null) ...[

@@ -31,7 +31,7 @@ class FiftyThirtyTwentySnapshot {
   double get ratioSavings =>
       incomeBaseline > 0 ? spentSavings / incomeBaseline : 0;
 
-  bool get needsOver50 => spentNeeds > targetNeeds + 0.01;
-  bool get wantsOver30 => spentWants > targetWants + 0.01;
-  bool get savingsOver20 => spentSavings > targetSavings + 0.01;
+  bool get needsOverTarget => spentNeeds > targetNeeds + 0.01;
+  bool get wantsOverTarget => spentWants > targetWants + 0.01;
+  bool get savingsOverTarget => spentSavings > targetSavings + 0.01;
 }

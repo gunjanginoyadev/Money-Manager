@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 class BudgetLocalDataSource {
   static const _authModeKey = 'auth_mode';
   static const _fiftyThirtyBaselineModeKey = 'fifty_thirty_baseline_mode';
+  static const _quickAddPresetsKey = 'quick_add_presets_v1';
 
   /// Legacy keys from older builds — cleared on sign-in / startup.
   static const _legacyProfileKey = 'budget_profile';
@@ -30,6 +31,20 @@ class BudgetLocalDataSource {
     await prefs.setString(_fiftyThirtyBaselineModeKey, value);
   }
 
+  Future<String?> loadQuickAddPresetsJson() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_quickAddPresetsKey);
+  }
+
+  Future<void> saveQuickAddPresetsJson(String? json) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (json == null || json.isEmpty) {
+      await prefs.remove(_quickAddPresetsKey);
+    } else {
+      await prefs.setString(_quickAddPresetsKey, json);
+    }
+  }
+
   /// Removes cached profile / expenses / transactions from older app versions.
   Future<void> clearLegacyBudgetKeys() async {
     final prefs = await SharedPreferences.getInstance();
@@ -43,6 +58,7 @@ class BudgetLocalDataSource {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_authModeKey);
     await prefs.remove(_fiftyThirtyBaselineModeKey);
+    await prefs.remove(_quickAddPresetsKey);
     await prefs.remove(_legacyProfileKey);
     await prefs.remove(_legacyExpensesKey);
     await prefs.remove(_legacyTransactionsKey);

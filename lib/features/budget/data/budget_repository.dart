@@ -1,9 +1,14 @@
+import 'dart:convert';
+
 import 'package:firebase_auth/firebase_auth.dart';
 
 import '../domain/models/auth_mode.dart';
 import '../domain/models/fifty_thirty_baseline_mode.dart';
+import '../domain/models/quick_add_preset.dart';
 import '../domain/models/budget_profile.dart';
 import '../domain/models/expense_entry.dart';
+import '../domain/models/saving_entry.dart';
+import '../domain/models/saving_goal.dart';
 import '../domain/models/transaction_entry.dart';
 import 'budget_local_data_source.dart';
 import 'firebase_sync_service.dart';
@@ -43,6 +48,52 @@ class BudgetRepository {
     return _localDataSource.saveFiftyThirtyBaselineMode(mode.storageValue);
   }
 
+  static const int _maxQuickAddPresets = 12;
+
+  Future<List<QuickAddPreset>> loadQuickAddPresets() async {
+    final raw = await _localDataSource.loadQuickAddPresetsJson();
+    if (raw == null || raw.isEmpty) {
+      return List<QuickAddPreset>.from(kDefaultQuickAddPresets);
+    }
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) {
+        return List<QuickAddPreset>.from(kDefaultQuickAddPresets);
+      }
+      final out = <QuickAddPreset>[];
+      for (final e in decoded) {
+        if (e is! Map) continue;
+        final m = Map<String, dynamic>.from(e);
+        final p = QuickAddPreset.fromJson(m);
+        if (p.title.isEmpty || p.amount <= 0) continue;
+        out.add(p);
+        if (out.length >= _maxQuickAddPresets) break;
+      }
+      if (out.isEmpty) {
+        return List<QuickAddPreset>.from(kDefaultQuickAddPresets);
+      }
+      return out;
+    } catch (_) {
+      return List<QuickAddPreset>.from(kDefaultQuickAddPresets);
+    }
+  }
+
+  Future<void> saveQuickAddPresets(List<QuickAddPreset> presets) async {
+    final list = presets.length > _maxQuickAddPresets
+        ? presets.sublist(0, _maxQuickAddPresets)
+        : presets;
+    final valid = list
+        .where((p) => p.title.trim().isNotEmpty && p.amount > 0)
+        .toList();
+    if (valid.isEmpty) {
+      await _localDataSource.saveQuickAddPresetsJson(null);
+      return;
+    }
+    await _localDataSource.saveQuickAddPresetsJson(
+      jsonEncode(valid.map((e) => e.toJson()).toList()),
+    );
+  }
+
   /// Clears leftover SharedPreferences from older versions (stale profile from another account).
   Future<void> clearLegacyLocalCache() => _localDataSource.clearLegacyBudgetKeys();
 
@@ -75,6 +126,16 @@ class BudgetRepository {
     return _firebaseSyncService.fetchRemoteTransactions();
   }
 
+  Future<SavingGoal?> loadSavingGoal() async {
+    if (!isCloudReady) return null;
+    return _firebaseSyncService.fetchRemoteSavingGoal();
+  }
+
+  Future<List<SavingEntry>> loadSavingEntries() async {
+    if (!isCloudReady) return const [];
+    return _firebaseSyncService.fetchRemoteSavingEntries();
+  }
+
   Future<void> saveProfile(BudgetProfile profile) async {
     if (!isCloudReady) {
       throw StateError('You must be online to save your profile.');
@@ -99,6 +160,17 @@ class BudgetRepository {
   }) async {
     if (!isCloudReady) {
       throw StateError('You must be online to add transactions.');
+    }
+    await _firebaseSyncService.syncProfile(profile);
+    await _firebaseSyncService.upsertTransaction(transaction);
+  }
+
+  Future<void> upsertTransaction({
+    required BudgetProfile profile,
+    required TransactionEntry transaction,
+  }) async {
+    if (!isCloudReady) {
+      throw StateError('You must be online to update transactions.');
     }
     await _firebaseSyncService.syncProfile(profile);
     await _firebaseSyncService.upsertTransaction(transaction);
@@ -133,6 +205,48 @@ class BudgetRepository {
     await _firebaseSyncService.syncProfile(profile);
     await _firebaseSyncService.clearExpenses();
     await _firebaseSyncService.clearTransactions();
+    await _firebaseSyncService.clearSavingEntries();
+  }
+
+  Future<void> saveSavingGoal({
+    required BudgetProfile profile,
+    required SavingGoal goal,
+  }) async {
+    if (!isCloudReady) {
+      throw StateError('You must be online to save a goal.');
+    }
+    await _firebaseSyncService.syncProfile(profile);
+    await _firebaseSyncService.upsertSavingGoal(goal);
+  }
+
+  Future<void> clearSavingGoal({required BudgetProfile profile}) async {
+    if (!isCloudReady) {
+      throw StateError('You must be online.');
+    }
+    await _firebaseSyncService.syncProfile(profile);
+    await _firebaseSyncService.clearSavingGoal();
+  }
+
+  Future<void> addSavingEntry({
+    required BudgetProfile profile,
+    required SavingEntry entry,
+  }) async {
+    if (!isCloudReady) {
+      throw StateError('You must be online to add saving entries.');
+    }
+    await _firebaseSyncService.syncProfile(profile);
+    await _firebaseSyncService.upsertSavingEntry(entry);
+  }
+
+  Future<void> deleteSavingEntry({
+    required BudgetProfile profile,
+    required String entryId,
+  }) async {
+    if (!isCloudReady) {
+      throw StateError('You must be online.');
+    }
+    await _firebaseSyncService.syncProfile(profile);
+    await _firebaseSyncService.removeSavingEntry(entryId);
   }
 
   /// Deletes Firestore data and Firebase Auth user when signed in, then clears local prefs.

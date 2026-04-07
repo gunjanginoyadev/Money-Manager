@@ -1,3 +1,5 @@
+import 'dart:ui' show ImageFilter;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -50,8 +52,11 @@ class _HomeShellState extends State<HomeShell> with TickerProviderStateMixin {
                 width: 64,
                 height: 64,
                 decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [AppColors.primary, Color(0xFF5A4FE0)],
+                  gradient: LinearGradient(
+                    colors: [
+                      AppColors.primary,
+                      AppColors.primaryLight,
+                    ],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
@@ -66,7 +71,7 @@ class _HomeShellState extends State<HomeShell> with TickerProviderStateMixin {
                 ),
                 child: const Icon(
                   Icons.account_balance_wallet_rounded,
-                  color: Colors.white,
+                  color: AppColors.onAccent,
                   size: 30,
                 ),
               ),
@@ -153,63 +158,68 @@ class _BottomNav extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        color: AppColors.bg,
-        border: Border(top: BorderSide(color: AppColors.border)),
-      ),
-      padding: EdgeInsets.only(
-        top: 10,
-        bottom: MediaQuery.of(context).padding.bottom + 24,
-      ),
-      child: Row(
-        children: _items.asMap().entries.map((entry) {
-          final i = entry.key;
-          final item = entry.value;
-          final active = i == selectedIndex;
-          return Expanded(
-            child: GestureDetector(
-              onTap: () => onTap(i),
-              behavior: HitTestBehavior.opaque,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    curve: Curves.easeOut,
-                    width: 32,
-                    height: 32,
-                    decoration: BoxDecoration(
-                      color: active
-                          ? AppColors.primaryGlow
-                          : Colors.transparent,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    alignment: Alignment.center,
-                    child: Icon(
-                      item.$1,
-                      size: 22,
-                      color: active ? AppColors.primary : AppColors.textMuted,
-                    ),
+    return ClipRect(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+        child: Container(
+          decoration: BoxDecoration(
+            color: AppColors.bg.withValues(alpha: 0.92),
+            border: const Border(top: BorderSide(color: AppColors.border)),
+          ),
+          padding: EdgeInsets.only(
+            top: 10,
+            bottom: MediaQuery.of(context).padding.bottom + 24,
+          ),
+          child: Row(
+            children: _items.asMap().entries.map((entry) {
+              final i = entry.key;
+              final item = entry.value;
+              final active = i == selectedIndex;
+              return Expanded(
+                child: GestureDetector(
+                  onTap: () => onTap(i),
+                  behavior: HitTestBehavior.opaque,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        curve: Curves.easeOut,
+                        width: 32,
+                        height: 32,
+                        decoration: BoxDecoration(
+                          color: active
+                              ? AppColors.primaryGlow
+                              : Colors.transparent,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        alignment: Alignment.center,
+                        child: Icon(
+                          item.$1,
+                          size: 22,
+                          color: active ? AppColors.primary : AppColors.textMuted,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      AnimatedDefaultTextStyle(
+                        duration: const Duration(milliseconds: 200),
+                        style: TextStyle(
+                          color: active
+                              ? AppColors.primary
+                              : AppColors.textMuted,
+                          fontSize: 10,
+                          fontWeight: active ? FontWeight.w600 : FontWeight.w400,
+                          letterSpacing: 0.3,
+                        ),
+                        child: Text(item.$2),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 4),
-                  AnimatedDefaultTextStyle(
-                    duration: const Duration(milliseconds: 200),
-                    style: TextStyle(
-                      color: active
-                          ? AppColors.primary
-                          : AppColors.textMuted,
-                      fontSize: 10,
-                      fontWeight: active ? FontWeight.w600 : FontWeight.w400,
-                      letterSpacing: 0.3,
-                    ),
-                    child: Text(item.$2),
-                  ),
-                ],
-              ),
-            ),
-          );
-        }).toList(),
+                ),
+              );
+            }).toList(),
+          ),
+        ),
       ),
     );
   }
