@@ -213,7 +213,7 @@ class _MonthScopeBanner extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            'Home shows this calendar month only. Use Report for past months or custom ranges.',
+            'Figures below are this calendar month only. Log transactions from your spending account and cash; use Report for history.',
             style: GoogleFonts.sora(
               fontSize: 11,
               height: 1.35,
@@ -237,37 +237,71 @@ class _BaselineModeToggle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SegmentedButton<FiftyThirtyBaselineMode>(
-      showSelectedIcon: false,
-      style: SegmentedButton.styleFrom(
-        selectedBackgroundColor: AppColors.primaryGlow,
-        selectedForegroundColor: AppColors.primary,
-        foregroundColor: AppColors.textSoft,
-        side: const BorderSide(color: AppColors.border),
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+    return InputDecorator(
+      decoration: InputDecoration(
+        labelText: '50-30-20 based on',
+        labelStyle: GoogleFonts.sora(fontSize: 12, color: AppColors.textMuted),
+        filled: true,
+        fillColor: AppColors.surface2,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: AppColors.border),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: AppColors.border),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: AppColors.primary, width: 1.2),
+        ),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
       ),
-      segments: [
-        ButtonSegment<FiftyThirtyBaselineMode>(
-          value: FiftyThirtyBaselineMode.profileSalary,
-          label: Text(
-            'Profile salary',
-            style: GoogleFonts.sora(fontSize: 12, fontWeight: FontWeight.w600),
-          ),
-          tooltip: 'Uses monthly income from Profile setup',
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<FiftyThirtyBaselineMode>(
+          value: selected,
+          isExpanded: true,
+          borderRadius: BorderRadius.circular(12),
+          dropdownColor: AppColors.surface2,
+          style: GoogleFonts.sora(fontSize: 13, color: AppColors.textPrimary),
+          items: [
+            DropdownMenuItem(
+              value: FiftyThirtyBaselineMode.monthIncomeEntries,
+              child: Text(
+                'This month’s income (logged)',
+                style: GoogleFonts.sora(
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+            ),
+            DropdownMenuItem(
+              value: FiftyThirtyBaselineMode.spendPool,
+              child: Text(
+                '20% of profile salary (alternate cap)',
+                style: GoogleFonts.sora(
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+            ),
+            DropdownMenuItem(
+              value: FiftyThirtyBaselineMode.profileSalary,
+              child: Text(
+                'Profile salary',
+                style: GoogleFonts.sora(
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+            ),
+          ],
+          onChanged: (v) {
+            if (v != null) onChanged(v);
+          },
         ),
-        ButtonSegment<FiftyThirtyBaselineMode>(
-          value: FiftyThirtyBaselineMode.monthIncomeEntries,
-          label: Text(
-            'Month income',
-            style: GoogleFonts.sora(fontSize: 12, fontWeight: FontWeight.w600),
-          ),
-          tooltip: 'Uses sum of income entries this month',
-        ),
-      ],
-      selected: {selected},
-      onSelectionChanged: (Set<FiftyThirtyBaselineMode> next) {
-        onChanged(next.first);
-      },
+      ),
     );
   }
 }
@@ -287,9 +321,18 @@ class _FiftyThirtyTwentyCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final b = snapshot.incomeBaseline;
     if (b <= 0) {
-      final msg = baselineMode == FiftyThirtyBaselineMode.monthIncomeEntries
-          ? 'No income recorded this month yet. Add a salary or income entry, or switch to Profile salary.'
-          : 'Set monthly income in your profile (or add income this month) to use the 50-30-20 view.';
+      final String msg;
+      switch (baselineMode) {
+        case FiftyThirtyBaselineMode.monthIncomeEntries:
+          msg =
+              'No income logged this month yet. Add a salary/income entry, or switch baseline above.';
+        case FiftyThirtyBaselineMode.spendPool:
+          msg =
+              'Set monthly salary in Profile so the 20% spend cap can be calculated, or pick another baseline.';
+        case FiftyThirtyBaselineMode.profileSalary:
+          msg =
+              'Set monthly income in Profile, or add income this month, or switch baseline above.';
+      }
       return Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
@@ -339,9 +382,14 @@ class _FiftyThirtyTwentyCard extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            baselineMode == FiftyThirtyBaselineMode.profileSalary
-                ? 'Targets: 50% Needs, 30% Wants, 20% Savings vs your Profile monthly income.'
-                : 'Targets: 50% Needs, 30% Wants, 20% Savings vs income recorded this month (credits).',
+            switch (baselineMode) {
+              FiftyThirtyBaselineMode.profileSalary =>
+                'Targets: 50% Needs, 30% Wants, 20% Savings vs Profile monthly income.',
+              FiftyThirtyBaselineMode.monthIncomeEntries =>
+                'Targets: 50% Needs, 30% Wants, 20% Savings vs income you logged this month (credits).',
+              FiftyThirtyBaselineMode.spendPool =>
+                'Targets: 50% Needs, 30% Wants, 20% Savings vs 20% of Profile salary (alternate baseline).',
+            },
             style: GoogleFonts.sora(
               fontSize: 11,
               height: 1.35,

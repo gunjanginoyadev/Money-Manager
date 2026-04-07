@@ -22,19 +22,11 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   final _formKey = GlobalKey<FormState>();
   final _incomeController = TextEditingController();
   final _emiController = TextEditingController(text: '0');
-  final _rentController = TextEditingController(text: '0');
-  final _billsController = TextEditingController(text: '0');
-  final _basicExpenseController = TextEditingController(text: '0');
-  final _bufferController = TextEditingController(text: '5000');
 
   @override
   void dispose() {
     _incomeController.dispose();
     _emiController.dispose();
-    _rentController.dispose();
-    _billsController.dispose();
-    _basicExpenseController.dispose();
-    _bufferController.dispose();
     super.dispose();
   }
 
@@ -67,10 +59,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                         formKey: _formKey,
                         incomeController: _incomeController,
                         emiController: _emiController,
-                        rentController: _rentController,
-                        billsController: _billsController,
-                        basicExpenseController: _basicExpenseController,
-                        bufferController: _bufferController,
                         onSave: _save,
                       ),
                     ),
@@ -82,10 +70,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   formKey: _formKey,
                   incomeController: _incomeController,
                   emiController: _emiController,
-                  rentController: _rentController,
-                  billsController: _billsController,
-                  basicExpenseController: _basicExpenseController,
-                  bufferController: _bufferController,
                   onSave: _save,
                 ),
         );
@@ -100,11 +84,13 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       BudgetProfile(
         monthlyIncome: double.tryParse(_incomeController.text) ?? 0,
         emi: double.tryParse(_emiController.text) ?? 0,
-        rent: double.tryParse(_rentController.text) ?? 0,
-        fixedBills: double.tryParse(_billsController.text) ?? 0,
-        basicExpenses: double.tryParse(_basicExpenseController.text) ?? 0,
-        safetyBuffer: double.tryParse(_bufferController.text) ?? 0,
+        rent: 0,
+        fixedBills: 0,
+        basicExpenses: 0,
+        safetyBuffer: 0,
+        monthlySpendPool: 0,
         avatarIndex: 0,
+        remainingOutingsCount: 0,
       ),
     );
   }
@@ -222,10 +208,6 @@ class _ScrollableOnboardingForm extends StatelessWidget {
     required this.formKey,
     required this.incomeController,
     required this.emiController,
-    required this.rentController,
-    required this.billsController,
-    required this.basicExpenseController,
-    required this.bufferController,
     required this.onSave,
   });
 
@@ -234,10 +216,6 @@ class _ScrollableOnboardingForm extends StatelessWidget {
   final GlobalKey<FormState> formKey;
   final TextEditingController incomeController;
   final TextEditingController emiController;
-  final TextEditingController rentController;
-  final TextEditingController billsController;
-  final TextEditingController basicExpenseController;
-  final TextEditingController bufferController;
   final VoidCallback onSave;
 
   @override
@@ -277,7 +255,7 @@ class _ScrollableOnboardingForm extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           Text(
-            'Set up your monthly finances once. We\'ll tell you instantly if any expense is safe to make.',
+            '“Can I spend?” matches Home’s Wants budget: 30% of income (same baseline you pick on Home). Enter your salary and optional EMI below.',
             style: GoogleFonts.sora(
               color: AppColors.textSecondary,
               fontSize: 15,
@@ -285,52 +263,37 @@ class _ScrollableOnboardingForm extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 28),
-          const _SectionLabel('INCOME'),
+          const _SectionLabel('MONTHLY SALARY'),
           const SizedBox(height: 8),
           _Field(
             controller: incomeController,
-            label: 'Monthly Salary',
+            label: 'Monthly salary',
             icon: Icons.currency_rupee_rounded,
             iconColor: AppColors.credit,
+            validator: (value) {
+              final parsed = double.tryParse(value?.trim() ?? '');
+              if (parsed == null || parsed < 0) return 'Enter a valid amount';
+              if (parsed <= 0) return 'Enter a salary greater than zero';
+              return null;
+            },
           ),
-          const SizedBox(height: 18),
-          const _SectionLabel('FIXED MONTHLY COSTS'),
-          const SizedBox(height: 8),
+          const SizedBox(height: 22),
+          const _SectionLabel('FOR YOUR PROFILE (OPTIONAL)'),
+          const SizedBox(height: 6),
+          Text(
+            'EMI / loans are stored for reference on Profile only.',
+            style: GoogleFonts.sora(
+              fontSize: 12,
+              height: 1.45,
+              color: AppColors.textSecondary,
+            ),
+          ),
+          const SizedBox(height: 10),
           _Field(
             controller: emiController,
-            label: 'EMI / Loan',
+            label: 'EMI / loans / debts (total)',
             icon: Icons.account_balance_rounded,
             iconColor: AppColors.debit,
-          ),
-          const SizedBox(height: 10),
-          _Field(
-            controller: rentController,
-            label: 'Rent',
-            icon: Icons.home_rounded,
-            iconColor: AppColors.warn,
-          ),
-          const SizedBox(height: 10),
-          _Field(
-            controller: billsController,
-            label: 'Other Fixed Bills',
-            icon: Icons.receipt_outlined,
-            iconColor: AppColors.debit,
-          ),
-          const SizedBox(height: 18),
-          const _SectionLabel('SPENDING LIMITS'),
-          const SizedBox(height: 8),
-          _Field(
-            controller: basicExpenseController,
-            label: 'Monthly Essentials (food/travel)',
-            icon: Icons.shopping_cart_outlined,
-            iconColor: AppColors.warn,
-          ),
-          const SizedBox(height: 10),
-          _Field(
-            controller: bufferController,
-            label: 'Safety Buffer',
-            icon: Icons.shield_outlined,
-            iconColor: AppColors.primary,
           ),
           const SizedBox(height: 28),
           SizedBox(
@@ -414,12 +377,14 @@ class _Field extends StatelessWidget {
     required this.label,
     required this.icon,
     required this.iconColor,
+    this.validator,
   });
 
   final TextEditingController controller;
   final String label;
   final IconData icon;
   final Color iconColor;
+  final String? Function(String?)? validator;
 
   @override
   Widget build(BuildContext context) {
@@ -432,11 +397,12 @@ class _Field extends StatelessWidget {
         prefixText: '₹ ',
         prefixIcon: Icon(icon, color: iconColor, size: 18),
       ),
-      validator: (value) {
-        final parsed = double.tryParse(value?.trim() ?? '');
-        if (parsed == null || parsed < 0) return 'Enter a valid amount';
-        return null;
-      },
+      validator: validator ??
+          (value) {
+            final parsed = double.tryParse(value?.trim() ?? '');
+            if (parsed == null || parsed < 0) return 'Enter a valid amount';
+            return null;
+          },
     );
   }
 }

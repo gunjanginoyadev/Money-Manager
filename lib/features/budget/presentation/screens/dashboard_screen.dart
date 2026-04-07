@@ -22,9 +22,8 @@ class DashboardScreen extends StatelessWidget {
 
     if (profile == null) return const SizedBox.shrink();
 
-    final safeToSpend = vm.safeToSpendAfterTrackedSpending;
     final decision = vm.lastDecision;
-    final isSafeZone = vm.currentAvailable > profile.safetyBuffer;
+    final isSafeZone = vm.isInSafeZone;
 
     return SafeArea(
       child: LayoutBuilder(
@@ -44,23 +43,23 @@ class DashboardScreen extends StatelessWidget {
             ),
             const SizedBox(height: 18),
             SummaryCard(
-              title: 'Current Available Money',
+              title: 'Left in Wants budget',
               value: CurrencyFormatter.format(vm.currentAvailable),
               icon: Icons.account_balance_wallet_rounded,
               color: const Color(0xFF6366F1),
             ),
             const SizedBox(height: 12),
             SummaryCard(
-              title: 'Total Obligations',
-              value: CurrencyFormatter.format(profile.totalObligations),
-              icon: Icons.payments_rounded,
+              title: 'Wants target (30%)',
+              value: CurrencyFormatter.format(vm.wantsBudgetThisMonth),
+              icon: Icons.savings_outlined,
               color: const Color(0xFF0EA5E9),
             ),
             const SizedBox(height: 12),
             SummaryCard(
-              title: 'Safe To Spend',
-              value: CurrencyFormatter.format(safeToSpend),
-              icon: Icons.verified_user_rounded,
+              title: 'Wants spent',
+              value: CurrencyFormatter.format(vm.wantsSpentThisMonth),
+              icon: Icons.payments_rounded,
               color: const Color(0xFF16A34A),
             ),
             const SizedBox(height: 18),
@@ -98,12 +97,14 @@ class DashboardScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      'Expected end-of-month balance: ${CurrencyFormatter.format(vm.currentAvailable)}',
+                      'Remaining in Wants budget: ${CurrencyFormatter.format(vm.currentAvailable)}',
                     ),
                     Text(
-                      vm.currentAvailable <= profile.safetyBuffer
-                          ? 'Next month may get affected. Reduce optional spending.'
-                          : 'Current trend looks healthy for next month.',
+                      vm.currentAvailable < 0
+                          ? 'You are over your Wants budget (30%).'
+                          : vm.currentAvailable == 0
+                              ? 'No room left in this month’s Wants budget.'
+                              : 'Room left before you hit your Wants limit.',
                     ),
                   ],
                 ),

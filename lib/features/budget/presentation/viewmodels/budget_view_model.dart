@@ -45,9 +45,9 @@ class BudgetViewModel extends ChangeNotifier {
   /// Month shown on the Report tab.
   DateTime activityMonth = MonthUtils.startOfMonth(DateTime.now());
 
-  /// 50-30-20 targets on Home: profile salary vs this month’s recorded income.
+  /// 50-30-20 targets on Home: profile / month income / spend pool.
   FiftyThirtyBaselineMode fiftyThirtyBaselineMode =
-      FiftyThirtyBaselineMode.profileSalary;
+      FiftyThirtyBaselineMode.monthIncomeEntries;
 
   String? get userEmail => FirebaseAuth.instance.currentUser?.email;
 
@@ -142,6 +142,10 @@ class BudgetViewModel extends ChangeNotifier {
             : received;
       case FiftyThirtyBaselineMode.monthIncomeEntries:
         baseline = received;
+      case FiftyThirtyBaselineMode.spendPool:
+        baseline = (p != null && p.spendBudgetFromIncome > 0)
+            ? p.spendBudgetFromIncome
+            : received;
     }
 
     double needs = 0;
@@ -194,7 +198,7 @@ class BudgetViewModel extends ChangeNotifier {
       cloudSyncEnabled = false;
       successMessage = null;
       _initializeInFlight = false;
-      fiftyThirtyBaselineMode = FiftyThirtyBaselineMode.profileSalary;
+      fiftyThirtyBaselineMode = FiftyThirtyBaselineMode.monthIncomeEntries;
     } catch (_) {
       errorMessage = 'Could not sign out.';
     } finally {
@@ -248,28 +252,73 @@ class BudgetViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 50-30-20 snapshot for the current calendar month (same baseline as Home’s dropdown).
+  FiftyThirtyTwentySnapshot get fiftyThirtySnapshotThisMonth =>
+      fiftyThirtyTwentyForMonth(DateTime.now());
+
+  /// 30% Wants cap for this month (matches Home “Wants” target).
+  double get wantsBudgetThisMonth => fiftyThirtySnapshotThisMonth.targetWants;
+
+  /// Want-tagged spending this month (same buckets as Home “Wants” bar).
+  double get wantsSpentThisMonth => fiftyThirtySnapshotThisMonth.spentWants;
+
+  /// Remaining in the **Wants** bucket: 30% of baseline − [wantsSpentThisMonth]. Aligns with Home when the same baseline mode is selected.
   double get currentAvailable {
-    final currentProfile = profile;
-    if (currentProfile == null) return 0;
-    return effectiveIncomeThisMonth -
-        currentProfile.totalObligations -
-        totalSpent;
+    if (profile == null) return 0;
+    final s = fiftyThirtySnapshotThisMonth;
+    if (s.incomeBaseline <= 0) return 0;
+    return s.targetWants - s.spentWants;
   }
 
-  /// After obligations, safety buffer, and spending tracked this month (same basis as [currentAvailable] + buffer).
-  double get safeToSpendAfterTrackedSpending {
-    final p = profile;
-    if (p == null) return 0;
-    return effectiveIncomeThisMonth - p.totalObligations - p.safetyBuffer - totalSpent;
-  }
+  /// Same as [currentAvailable].
+  double get safeToSpendAfterTrackedSpending => currentAvailable;
 
   double get endOfMonthProjection => currentAvailable;
 
   bool get isInSafeZone {
-    final currentProfile = profile;
-    if (currentProfile == null) return false;
-    return currentAvailable > currentProfile.safetyBuffer;
+    if (profile == null) return false;
+    final s = fiftyThirtySnapshotThisMonth;
+    if (s.incomeBaseline <= 0) return false;
+    return currentAvailable > 0;
   }
+
+  /// **M** = R ÷ effective **N** (your N, or about one slot per week left when N is 0). Null if remaining Wants is negative.
+  static double? maxPerOutingWants({
+    required double remainingWants,
+    required int outingsRemaining,
+    DateTime? now,
+  }) {
+    if (remainingWants < 0) return null;
+    final n = DecisionEngine.effectiveOutingCountForPacing(
+      outingsRemaining: outingsRemaining,
+      now: now,
+    );
+    return remainingWants / n;
+  }
+
+  /// Safer cap: **M × 0.8** (buffer for surprises).
+  static double? bufferedMaxPerOutingWants({
+    required double remainingWants,
+    required int outingsRemaining,
+    DateTime? now,
+  }) {
+    final m = maxPerOutingWants(
+      remainingWants: remainingWants,
+      outingsRemaining: outingsRemaining,
+      now: now,
+    );
+    return m != null ? m * 0.8 : null;
+  }
+
+  /// Same rule as [DecisionEngine.effectiveOutingCountForPacing] (for UI copy).
+  static int effectiveOutingCountForPacing({
+    required int outingsRemaining,
+    DateTime? now,
+  }) =>
+      DecisionEngine.effectiveOutingCountForPacing(
+        outingsRemaining: outingsRemaining,
+        now: now,
+      );
 
   bool get needsAuthSelection => authMode == AuthMode.undecided;
 
@@ -439,20 +488,34 @@ class BudgetViewModel extends ChangeNotifier {
   }) {
     final currentProfile = profile;
     if (currentProfile == null) {
-      return const ExpenseDecision(
+      return ExpenseDecision(
         status: DecisionStatus.notSafe,
         remainingBalance: 0,
         endOfMonthProjection: 0,
         message: 'Complete your profile setup first.',
         availableBefore: 0,
-        expenseAmount: 0,
+        expenseAmount: amount,
+        suggestedSpendCap: null,
       );
     }
-    return _decisionEngine.evaluate(
-      profile: currentProfile,
-      effectiveMonthlyIncome: effectiveIncomeThisMonth,
-      currentSpent: totalSpent,
+    final snap = fiftyThirtySnapshotThisMonth;
+    if (snap.incomeBaseline <= 0) {
+      return ExpenseDecision(
+        status: DecisionStatus.notSafe,
+        remainingBalance: 0,
+        endOfMonthProjection: 0,
+        message:
+            'Log income this month or change the 50-30-20 baseline on Home so your Wants target (30%) can be calculated.',
+        availableBefore: 0,
+        expenseAmount: amount,
+        suggestedSpendCap: null,
+      );
+    }
+    return _decisionEngine.evaluateSpendBudget(
+      monthlySpendBudget: snap.targetWants,
+      spentThisMonth: snap.spentWants,
       newExpense: amount,
+      outingsRemaining: currentProfile.remainingOutingsCount,
       expenseLabel: expenseLabel,
     );
   }

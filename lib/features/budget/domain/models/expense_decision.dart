@@ -8,13 +8,17 @@ class ExpenseDecision {
     required this.message,
     required this.availableBefore,
     required this.expenseAmount,
+    this.suggestedSpendCap,
   });
 
   final DecisionStatus status;
   final double remainingBalance;
   final double endOfMonthProjection;
   final String message;
-  /// Disposable cash before this hypothetical expense (income − obligations − spent so far).
+  /// Room in the Wants budget before this hypothetical expense (30% cap − want-tagged spend so far).
   final double availableBefore;
   final double expenseAmount;
+
+  /// Recommended max: min(remaining Wants, (R÷effectiveN)×0.8). If N is 0, effectiveN is about one slot per week left in the month.
+  final double? suggestedSpendCap;
 }

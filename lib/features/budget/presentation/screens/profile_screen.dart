@@ -18,10 +18,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   late final TextEditingController _incomeController;
   late final TextEditingController _emiController;
-  late final TextEditingController _rentController;
-  late final TextEditingController _billsController;
-  late final TextEditingController _basicExpenseController;
-  late final TextEditingController _bufferController;
 
   String? _editingField;
   late int _avatarIndex;
@@ -35,24 +31,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _incomeController =
         TextEditingController(text: profile.monthlyIncome.toStringAsFixed(0));
     _emiController = TextEditingController(text: profile.emi.toStringAsFixed(0));
-    _rentController = TextEditingController(text: profile.rent.toStringAsFixed(0));
-    _billsController =
-        TextEditingController(text: profile.fixedBills.toStringAsFixed(0));
-    _basicExpenseController =
-        TextEditingController(text: profile.basicExpenses.toStringAsFixed(0));
-    _bufferController =
-        TextEditingController(text: profile.safetyBuffer.toStringAsFixed(0));
+    _incomeController.addListener(() => setState(() {}));
   }
 
   @override
   void dispose() {
     _incomeController.dispose();
     _emiController.dispose();
-    _rentController.dispose();
-    _billsController.dispose();
-    _basicExpenseController.dispose();
-    _bufferController.dispose();
     super.dispose();
+  }
+
+  double _previewSpendCap(BudgetProfile saved) {
+    final parsed = double.tryParse(_incomeController.text.trim());
+    final income = parsed ?? saved.monthlyIncome;
+    return income > 0 ? income * 0.3 : 0;
   }
 
   @override
@@ -225,12 +217,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
               const Padding(
                 padding: EdgeInsets.only(left: 4, bottom: 8),
                 child: Text(
-                  'INCOME & FIXED COSTS',
+                  'SPEND LIMIT & REFERENCE',
                   style: TextStyle(
                     color: AppColors.textSecondary,
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
                     letterSpacing: 0.8,
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.only(left: 4, bottom: 10),
+                child: Text(
+                  '“Can I spend?” follows Home’s Wants row (30% of the same baseline). Salary and EMI below are for your reference.',
+                  style: TextStyle(
+                    color: AppColors.textSecondary.withValues(alpha: 0.9),
+                    fontSize: 12,
+                    height: 1.35,
                   ),
                 ),
               ),
@@ -245,10 +248,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                   child: Column(
                     children: [
+                      _ProfileComputedRow(
+                        icon: Icons.savings_outlined,
+                        iconColor: AppColors.primaryLight,
+                        label: 'Wants budget from salary (30%)',
+                        amount: _previewSpendCap(vm.profile!),
+                      ),
+                      const Divider(height: 1, indent: 56),
                       _ProfileRow(
                         icon: Icons.attach_money_rounded,
                         iconColor: AppColors.credit,
-                        label: 'Monthly Income',
+                        label: 'Monthly salary',
                         controller: _incomeController,
                         isEditing: _editingField == 'income',
                         onTap: () => setState(() => _editingField = 'income'),
@@ -257,46 +267,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       _ProfileRow(
                         icon: Icons.account_balance_rounded,
                         iconColor: AppColors.debit,
-                        label: 'EMI / Loan',
+                        label: 'EMI / loans / debts',
                         controller: _emiController,
                         isEditing: _editingField == 'emi',
                         onTap: () => setState(() => _editingField = 'emi'),
-                      ),
-                      const Divider(height: 1, indent: 56),
-                      _ProfileRow(
-                        icon: Icons.home_rounded,
-                        iconColor: AppColors.warn,
-                        label: 'Rent',
-                        controller: _rentController,
-                        isEditing: _editingField == 'rent',
-                        onTap: () => setState(() => _editingField = 'rent'),
-                      ),
-                      const Divider(height: 1, indent: 56),
-                      _ProfileRow(
-                        icon: Icons.receipt_outlined,
-                        iconColor: AppColors.debit,
-                        label: 'Other Fixed Bills',
-                        controller: _billsController,
-                        isEditing: _editingField == 'bills',
-                        onTap: () => setState(() => _editingField = 'bills'),
-                      ),
-                      const Divider(height: 1, indent: 56),
-                      _ProfileRow(
-                        icon: Icons.shopping_cart_outlined,
-                        iconColor: AppColors.warn,
-                        label: 'Monthly Essentials',
-                        controller: _basicExpenseController,
-                        isEditing: _editingField == 'basic',
-                        onTap: () => setState(() => _editingField = 'basic'),
-                      ),
-                      const Divider(height: 1, indent: 56),
-                      _ProfileRow(
-                        icon: Icons.shield_outlined,
-                        iconColor: AppColors.primary,
-                        label: 'Safety Buffer',
-                        controller: _bufferController,
-                        isEditing: _editingField == 'buffer',
-                        onTap: () => setState(() => _editingField = 'buffer'),
                         isLast: true,
                       ),
                     ],
@@ -343,16 +317,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> _save() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
     final vm = context.read<BudgetViewModel>();
+    final prev = vm.profile!;
     setState(() => _editingField = null);
     await vm.saveProfile(
       BudgetProfile(
         monthlyIncome: double.tryParse(_incomeController.text) ?? 0,
         emi: double.tryParse(_emiController.text) ?? 0,
-        rent: double.tryParse(_rentController.text) ?? 0,
-        fixedBills: double.tryParse(_billsController.text) ?? 0,
-        basicExpenses: double.tryParse(_basicExpenseController.text) ?? 0,
-        safetyBuffer: double.tryParse(_bufferController.text) ?? 0,
+        rent: prev.rent,
+        fixedBills: prev.fixedBills,
+        basicExpenses: prev.basicExpenses,
+        safetyBuffer: prev.safetyBuffer,
+        monthlySpendPool: prev.monthlySpendPool,
         avatarIndex: _avatarIndex,
+        remainingOutingsCount: prev.remainingOutingsCount,
       ),
     );
   }
@@ -405,15 +382,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
     if (!mounted || picked == null) return;
     setState(() => _avatarIndex = picked);
+    final prev = vm.profile!;
     await vm.saveProfile(
       BudgetProfile(
         monthlyIncome: double.tryParse(_incomeController.text) ?? 0,
         emi: double.tryParse(_emiController.text) ?? 0,
-        rent: double.tryParse(_rentController.text) ?? 0,
-        fixedBills: double.tryParse(_billsController.text) ?? 0,
-        basicExpenses: double.tryParse(_basicExpenseController.text) ?? 0,
-        safetyBuffer: double.tryParse(_bufferController.text) ?? 0,
+        rent: prev.rent,
+        fixedBills: prev.fixedBills,
+        basicExpenses: prev.basicExpenses,
+        safetyBuffer: prev.safetyBuffer,
+        monthlySpendPool: prev.monthlySpendPool,
         avatarIndex: picked,
+        remainingOutingsCount: prev.remainingOutingsCount,
       ),
     );
   }
@@ -541,6 +521,59 @@ class _DeleteAccountDialogState extends State<_DeleteAccountDialog> {
           child: const Text('Delete permanently'),
         ),
       ],
+    );
+  }
+}
+
+class _ProfileComputedRow extends StatelessWidget {
+  const _ProfileComputedRow({
+    required this.icon,
+    required this.iconColor,
+    required this.label,
+    required this.amount,
+  });
+
+  final IconData icon;
+  final Color iconColor;
+  final String label;
+  final double amount;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      child: Row(
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: iconColor.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, color: iconColor, size: 16),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              label,
+              style: const TextStyle(
+                color: AppColors.textPrimary,
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          Text(
+            'Rs ${amount.toStringAsFixed(0)}',
+            style: const TextStyle(
+              color: AppColors.textSecondary,
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

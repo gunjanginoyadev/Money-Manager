@@ -3,8 +3,11 @@ enum FiftyThirtyBaselineMode {
   /// [BudgetProfile.monthlyIncome] (falls back to recorded month income if unset).
   profileSalary,
 
-  /// Sum of credit (income) transactions for the selected month only.
+  /// Sum of credit (income) transactions for the selected month — matches “salary I logged this month”.
   monthIncomeEntries,
+
+  /// 20% of [BudgetProfile.monthlyIncome] — same cap as “Can I spend?”.
+  spendPool,
 }
 
 extension FiftyThirtyBaselineModeX on FiftyThirtyBaselineMode {
@@ -13,9 +16,12 @@ extension FiftyThirtyBaselineModeX on FiftyThirtyBaselineMode {
 
 FiftyThirtyBaselineMode fiftyThirtyBaselineModeFromStorage(String? raw) {
   switch (raw) {
-    case 'monthIncomeEntries':
-      return FiftyThirtyBaselineMode.monthIncomeEntries;
-    default:
+    case 'profileSalary':
       return FiftyThirtyBaselineMode.profileSalary;
+    case 'spendPool':
+      return FiftyThirtyBaselineMode.spendPool;
+    case 'monthIncomeEntries':
+    default:
+      return FiftyThirtyBaselineMode.monthIncomeEntries;
   }
 }

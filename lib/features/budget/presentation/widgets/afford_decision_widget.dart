@@ -7,7 +7,7 @@ import '../../../../core/utils/currency_formatter.dart';
 import '../../domain/models/expense_decision.dart';
 import '../viewmodels/budget_view_model.dart';
 
-/// "Can I afford this?" tool — Plan tab summary or full [AffordDecisionScreen].
+/// “Check a price” before spending — embedded on the Spend tab.
 class AffordDecisionWidget extends StatefulWidget {
   const AffordDecisionWidget({super.key, this.showHeading = true});
 
@@ -24,14 +24,14 @@ class _AffordDecisionWidgetState extends State<AffordDecisionWidget> {
   ExpenseDecision? _result;
   int? _selectedQuickAmount;
 
-  static const _quickAmounts = [500, 1000, 2000, 5000, 10000];
+  static const _quickAmounts = [300, 500, 1000, 2000, 5000];
   static const _categories = [
-    '🎬 Movie',
-    '🛍️ Shopping',
-    '🍕 Food',
-    '✈️ Travel',
-    '🎮 Gaming',
-    '💊 Health',
+    'Movie',
+    'Dinner out',
+    'Cafe / coffee',
+    'Day out',
+    'Shopping',
+    'Other',
   ];
 
   @override
@@ -52,7 +52,7 @@ class _AffordDecisionWidgetState extends State<AffordDecisionWidget> {
       children: [
         if (widget.showHeading) ...[
           Text(
-            'Can I afford this?',
+            'Check a price',
             style: GoogleFonts.sora(
               fontSize: 16,
               fontWeight: FontWeight.w800,
@@ -61,7 +61,7 @@ class _AffordDecisionWidgetState extends State<AffordDecisionWidget> {
           ),
           const SizedBox(height: 4),
           Text(
-            'Check discretionary spends — dinner, gadgets, trips, and more.',
+            'Enter an amount to see if it fits what you have left and how much room you’d have after.',
             style: GoogleFonts.sora(
               fontSize: 12,
               color: AppColors.textSoft,
@@ -330,33 +330,33 @@ class _ResultCard extends StatelessWidget {
     late final Color titleColor;
     late final Color borderColor;
     late final Color bgDim;
-    late final String bufferLine;
+    late final String headroomLine;
 
     switch (decision.status) {
       case DecisionStatus.safe:
         emoji = '🟢';
         title = 'SAFE — Go Ahead!';
-        subtitle = 'No financial risk detected';
+        subtitle = 'Within your Wants plan';
         titleColor = AppColors.safe;
         borderColor = const Color(0x4422C55E);
         bgDim = AppColors.safeDim;
-        bufferLine = '✅ Maintained';
+        headroomLine = 'Comfortable';
       case DecisionStatus.okay:
         emoji = '🟡';
-        title = 'OKAY — Slight Risk';
-        subtitle = 'You can proceed, but be mindful';
+        title = 'OKAY — Review';
+        subtitle = 'Tight, or above a comfortable single outing — details below';
         titleColor = AppColors.warn;
         borderColor = const Color(0x44F59E0B);
         bgDim = AppColors.warnDim;
-        bufferLine = '⚠️ Touching Buffer';
+        headroomLine = 'Tight';
       case DecisionStatus.notSafe:
         emoji = '🔴';
         title = 'NOT SAFE';
-        subtitle = 'Avoid this expense right now';
+        subtitle = 'Over what you can afford this month';
         titleColor = AppColors.danger;
         borderColor = const Color(0x44EF4444);
         bgDim = AppColors.dangerDim;
-        bufferLine = '❌ At Risk';
+        headroomLine = 'Over limit';
     }
 
     return Container(
@@ -401,6 +401,72 @@ class _ResultCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 16),
+          if (decision.suggestedSpendCap != null &&
+              decision.suggestedSpendCap! > 0) ...[
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: AppColors.primary.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: AppColors.primary.withValues(alpha: 0.35),
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Suggested spend (this purchase)',
+                    style: GoogleFonts.sora(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.4,
+                      color: AppColors.textMuted,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    CurrencyFormatter.formatRupee(decision.suggestedSpendCap!),
+                    style: GoogleFonts.jetBrainsMono(
+                      fontSize: 26,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.primary,
+                      letterSpacing: -0.5,
+                    ),
+                  ),
+                  if (decision.expenseAmount >
+                      decision.suggestedSpendCap! + 0.01) ...[
+                    const SizedBox(height: 10),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(
+                          Icons.warning_amber_rounded,
+                          color: AppColors.warn,
+                          size: 18,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'You entered ${CurrencyFormatter.formatRupee(decision.expenseAmount)} — '
+                            '${CurrencyFormatter.formatRupee(decision.expenseAmount - decision.suggestedSpendCap!)} above that. '
+                            'Try to aim near the amount above when you can.',
+                            style: GoogleFonts.sora(
+                              fontSize: 12,
+                              height: 1.4,
+                              color: AppColors.text,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+          ],
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
@@ -410,7 +476,7 @@ class _ResultCard extends StatelessWidget {
             child: Column(
               children: [
                 _BreakRow(
-                  label: 'Available before',
+                  label: 'Left before this expense',
                   value: CurrencyFormatter.formatRupee(decision.availableBefore),
                   valueColor: AppColors.text,
                 ),
@@ -434,8 +500,8 @@ class _ResultCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 10),
                 _BreakRow(
-                  label: 'Buffer safety',
-                  value: bufferLine,
+                  label: 'Headroom',
+                  value: headroomLine,
                   valueColor: titleColor,
                 ),
               ],

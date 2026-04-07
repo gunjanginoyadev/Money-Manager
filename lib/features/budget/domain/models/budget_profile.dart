@@ -8,7 +8,9 @@ class BudgetProfile {
     required this.fixedBills,
     required this.basicExpenses,
     required this.safetyBuffer,
+    this.monthlySpendPool = 0,
     this.avatarIndex = 0,
+    this.remainingOutingsCount = 0,
   });
 
   final double monthlyIncome;
@@ -18,8 +20,18 @@ class BudgetProfile {
   final double basicExpenses;
   final double safetyBuffer;
 
+  /// Legacy stored field; not used for “Can I spend?” (that uses Home’s Wants / 30% logic).
+  final double monthlySpendPool;
+
   /// Index into [kProfileAvatarOptions] for the profile picture.
   final int avatarIndex;
+
+  /// Planned **wants** outings/events left this month (**N** in R÷N). Edited on the Spend tab.
+  final int remainingOutingsCount;
+
+  /// **20% of [monthlyIncome]** — used only for the optional 50-30-20 “Spend pool” baseline on Home.
+  double get spendBudgetFromIncome =>
+      monthlyIncome > 0 ? monthlyIncome * 0.2 : 0;
 
   double get totalObligations => emi + rent + fixedBills + basicExpenses;
 
@@ -35,7 +47,9 @@ class BudgetProfile {
         'fixedBills': fixedBills,
         'basicExpenses': basicExpenses,
         'safetyBuffer': safetyBuffer,
+        'monthlySpendPool': monthlySpendPool,
         'avatarIndex': avatarIndex,
+        'remainingOutingsCount': remainingOutingsCount,
       };
 
   factory BudgetProfile.fromJson(Map<String, dynamic> json) {
@@ -46,7 +60,35 @@ class BudgetProfile {
       fixedBills: (json['fixedBills'] as num?)?.toDouble() ?? 0,
       basicExpenses: (json['basicExpenses'] as num?)?.toDouble() ?? 0,
       safetyBuffer: (json['safetyBuffer'] as num?)?.toDouble() ?? 0,
+      monthlySpendPool: (json['monthlySpendPool'] as num?)?.toDouble() ?? 0,
       avatarIndex: (json['avatarIndex'] as num?)?.toInt() ?? 0,
+      remainingOutingsCount:
+          (json['remainingOutingsCount'] as num?)?.toInt() ?? 0,
+    );
+  }
+
+  BudgetProfile copyWith({
+    double? monthlyIncome,
+    double? emi,
+    double? rent,
+    double? fixedBills,
+    double? basicExpenses,
+    double? safetyBuffer,
+    double? monthlySpendPool,
+    int? avatarIndex,
+    int? remainingOutingsCount,
+  }) {
+    return BudgetProfile(
+      monthlyIncome: monthlyIncome ?? this.monthlyIncome,
+      emi: emi ?? this.emi,
+      rent: rent ?? this.rent,
+      fixedBills: fixedBills ?? this.fixedBills,
+      basicExpenses: basicExpenses ?? this.basicExpenses,
+      safetyBuffer: safetyBuffer ?? this.safetyBuffer,
+      monthlySpendPool: monthlySpendPool ?? this.monthlySpendPool,
+      avatarIndex: avatarIndex ?? this.avatarIndex,
+      remainingOutingsCount:
+          remainingOutingsCount ?? this.remainingOutingsCount,
     );
   }
 }

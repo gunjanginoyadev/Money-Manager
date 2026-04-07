@@ -18,9 +18,9 @@ class ForecastSummaryWidget extends StatelessWidget {
     if (profile == null) return const SizedBox.shrink();
 
     final isSafe = vm.isInSafeZone;
-    final pctUsed = profile.monthlyIncome > 0
-        ? ((vm.totalSpent + profile.totalObligations) / profile.monthlyIncome)
-            .clamp(0.0, 1.0)
+    final wantsCap = vm.wantsBudgetThisMonth;
+    final pctUsed = wantsCap > 0
+        ? (vm.wantsSpentThisMonth / wantsCap).clamp(0.0, 1.0)
         : 0.0;
 
     return Column(
@@ -53,7 +53,7 @@ class ForecastSummaryWidget extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                'EXPECTED END-OF-MONTH BALANCE',
+                'REMAINING IN WANTS BUDGET',
                 style: TextStyle(
                   color: AppColors.textSecondary,
                   fontSize: 11,
@@ -72,9 +72,11 @@ class ForecastSummaryWidget extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 4),
-              const Text(
-                'Based on income minus spending this month',
-                style: TextStyle(
+              Text(
+                wantsCap > 0
+                    ? '30% Wants target minus want-tagged spending (same as Home)'
+                    : 'Log income or set baseline on Home (50-30-20)',
+                style: const TextStyle(
                   color: AppColors.textSecondary,
                   fontSize: 13,
                 ),
@@ -119,17 +121,15 @@ class ForecastSummaryWidget extends StatelessWidget {
           children: [
             Expanded(
               child: _ForecastTile(
-                label: 'Total out',
-                value: CurrencyFormatter.format(
-                  vm.totalSpent + profile.totalObligations,
-                ),
+                label: 'Wants spent',
+                value: CurrencyFormatter.format(vm.wantsSpentThisMonth),
                 color: AppColors.debit,
               ),
             ),
             const SizedBox(width: 10),
             Expanded(
               child: _ForecastTile(
-                label: 'Disposable',
+                label: 'Left in Wants',
                 value: CurrencyFormatter.format(vm.currentAvailable),
                 color: AppColors.credit,
               ),
@@ -138,7 +138,7 @@ class ForecastSummaryWidget extends StatelessWidget {
         ),
         const SizedBox(height: 16),
         const Text(
-          'Budget utilisation',
+          'Wants budget use',
           style: TextStyle(
             color: AppColors.textPrimary,
             fontSize: 14,
@@ -160,7 +160,9 @@ class ForecastSummaryWidget extends StatelessWidget {
                 children: [
                   Flexible(
                     child: Text(
-                      '${(pctUsed * 100).toStringAsFixed(0)}% committed',
+                      wantsCap > 0
+                          ? '${(pctUsed * 100).toStringAsFixed(0)}% of Wants target used'
+                          : 'No Wants target yet',
                       style: const TextStyle(
                         color: AppColors.textSecondary,
                         fontSize: 13,
@@ -169,11 +171,7 @@ class ForecastSummaryWidget extends StatelessWidget {
                   ),
                   Flexible(
                     child: Text(
-                      CurrencyFormatter.format(
-                        profile.monthlyIncome -
-                            vm.totalSpent -
-                            profile.totalObligations,
-                      ),
+                      CurrencyFormatter.format(vm.currentAvailable),
                       textAlign: TextAlign.end,
                       style: const TextStyle(
                         color: AppColors.textPrimary,
@@ -205,10 +203,8 @@ class ForecastSummaryWidget extends StatelessWidget {
                 spacing: 10,
                 runSpacing: 6,
                 children: const [
-                  _Legend(color: AppColors.debit, label: 'Obligations'),
-                  _Legend(color: AppColors.warn, label: 'Essentials'),
-                  _Legend(color: AppColors.credit, label: 'Free'),
-                  _Legend(color: AppColors.primary, label: 'Buffer'),
+                  _Legend(color: AppColors.debit, label: 'Spent'),
+                  _Legend(color: AppColors.credit, label: 'Remaining'),
                 ],
               ),
             ],
@@ -235,33 +231,33 @@ class ForecastSummaryWidget extends StatelessWidget {
               _TimelineItem(
                 icon: Icons.circle,
                 iconColor: AppColors.credit,
-                title: 'Start of month',
+                title: 'Wants target (30%)',
                 subtitle:
-                    'Salary: ${CurrencyFormatter.format(profile.monthlyIncome)}',
+                    'Cap: ${CurrencyFormatter.format(vm.wantsBudgetThisMonth)}',
                 isFirst: true,
               ),
               _TimelineItem(
                 icon: Icons.circle,
                 iconColor: AppColors.debit,
-                title: 'Fixed deductions',
+                title: 'Reference (Profile)',
                 subtitle:
-                    'EMI + Rent + Bills: ${CurrencyFormatter.format(profile.emi + profile.rent + profile.fixedBills)}',
+                    'Salary ${CurrencyFormatter.format(profile.monthlyIncome)} · EMI ${CurrencyFormatter.format(profile.emi)}',
               ),
               _TimelineItem(
                 icon: Icons.circle,
                 iconColor: AppColors.warn,
-                title: 'Recorded spending',
+                title: 'Want-tagged spending',
                 subtitle:
-                    'This month: ${CurrencyFormatter.format(vm.totalSpent)}',
+                    'This month: ${CurrencyFormatter.format(vm.wantsSpentThisMonth)}',
               ),
               _TimelineItem(
                 icon: Icons.check_circle_rounded,
-                iconColor: vm.endOfMonthProjection > 0
+                iconColor: vm.endOfMonthProjection >= 0
                     ? AppColors.credit
                     : AppColors.debit,
-                title: 'End of month',
+                title: 'Remaining',
                 subtitle:
-                    'Balance remaining: ${CurrencyFormatter.format(vm.endOfMonthProjection)}',
+                    '${CurrencyFormatter.format(vm.endOfMonthProjection)} left in Wants budget',
                 isLast: true,
               ),
             ],
@@ -292,8 +288,10 @@ class ForecastSummaryWidget extends StatelessWidget {
               Expanded(
                 child: Text(
                   isSafe
-                      ? 'Next month looks stable. Obligations are covered and your buffer is in mind.'
-                      : 'Spending is high. Consider trimming optional expenses this month.',
+                      ? 'You still have room in your Wants budget (30%).'
+                      : wantsCap <= 0
+                          ? 'Log income or set a baseline on Home to see your Wants target.'
+                          : 'You are at or over your Wants budget.',
                   style: TextStyle(
                     color: isSafe ? AppColors.credit : AppColors.warn,
                     fontSize: 13,
