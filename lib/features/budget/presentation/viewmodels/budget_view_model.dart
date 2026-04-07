@@ -9,7 +9,9 @@ import '../../../../core/utils/month_utils.dart';
 import '../../data/budget_repository.dart';
 import '../../domain/models/auth_mode.dart';
 import '../../domain/models/budget_profile.dart';
+import '../../domain/models/month_liquidity_snapshot.dart';
 import '../../domain/models/fifty_thirty_twenty_snapshot.dart';
+import '../../domain/models/fifty_thirty_baseline_mode.dart';
 import '../../domain/models/expense_decision.dart';
 import '../../domain/models/expense_entry.dart';
 import '../../domain/models/spending_kind.dart';
@@ -23,6 +25,8 @@ class BudgetViewModel extends ChangeNotifier {
   final BudgetRepository _repository;
   final DecisionEngine _decisionEngine = const DecisionEngine();
   final Uuid _uuid = const Uuid();
+
+  bool _initializeInFlight = false;
 
   bool isLoading = true;
   bool isInitializing = true;
@@ -40,6 +44,10 @@ class BudgetViewModel extends ChangeNotifier {
 
   /// Month shown on the Report tab.
   DateTime activityMonth = MonthUtils.startOfMonth(DateTime.now());
+
+  /// 50-30-20 targets on Home: profile salary vs this month’s recorded income.
+  FiftyThirtyBaselineMode fiftyThirtyBaselineMode =
+      FiftyThirtyBaselineMode.profileSalary;
 
   String? get userEmail => FirebaseAuth.instance.currentUser?.email;
 
@@ -99,13 +107,42 @@ class BudgetViewModel extends ChangeNotifier {
       ..sort((a, b) => b.effectiveDate.compareTo(a.effectiveDate));
   }
 
+  /// Inclusive date range in local time (by calendar day).
+  List<TransactionEntry> transactionsInDateRange(DateTime start, DateTime end) {
+    final s = DateTime(start.year, start.month, start.day);
+    final e = DateTime(end.year, end.month, end.day, 23, 59, 59, 999);
+    return transactions
+        .where((t) {
+          final d = t.effectiveDate.toLocal();
+          return !d.isBefore(s) && !d.isAfter(e);
+        })
+        .toList()
+      ..sort((a, b) => b.effectiveDate.compareTo(a.effectiveDate));
+  }
+
+  MonthLiquiditySnapshot monthLiquidityForMonth(DateTime month) {
+    return liquiditySnapshotForTransactions(transactionsForMonth(month));
+  }
+
+  MonthLiquiditySnapshot monthLiquidityForDateRange(DateTime start, DateTime end) {
+    return liquiditySnapshotForTransactions(
+      transactionsInDateRange(start, end),
+    );
+  }
+
   /// 50-30-20 targets vs spending for [month] (expense debits only).
   FiftyThirtyTwentySnapshot fiftyThirtyTwentyForMonth(DateTime month) {
     final p = profile;
     final received = totalReceivedInMonth(month);
-    final baseline = (p != null && p.monthlyIncome > 0)
-        ? p.monthlyIncome
-        : received;
+    final double baseline;
+    switch (fiftyThirtyBaselineMode) {
+      case FiftyThirtyBaselineMode.profileSalary:
+        baseline = (p != null && p.monthlyIncome > 0)
+            ? p.monthlyIncome
+            : received;
+      case FiftyThirtyBaselineMode.monthIncomeEntries:
+        baseline = received;
+    }
 
     double needs = 0;
     double wants = 0;
@@ -156,6 +193,8 @@ class BudgetViewModel extends ChangeNotifier {
       lastDecision = null;
       cloudSyncEnabled = false;
       successMessage = null;
+      _initializeInFlight = false;
+      fiftyThirtyBaselineMode = FiftyThirtyBaselineMode.profileSalary;
     } catch (_) {
       errorMessage = 'Could not sign out.';
     } finally {
@@ -235,6 +274,8 @@ class BudgetViewModel extends ChangeNotifier {
   bool get needsAuthSelection => authMode == AuthMode.undecided;
 
   Future<void> initialize() async {
+    if (_initializeInFlight) return;
+    _initializeInFlight = true;
     isInitializing = true;
     isLoading = true;
     errorMessage = null;
@@ -264,6 +305,7 @@ class BudgetViewModel extends ChangeNotifier {
         authMode = AuthMode.email;
         await _repository.saveAuthMode(authMode);
         await _bootstrapForAuthMode(AuthMode.email);
+        await _loadFiftyThirtyBaselinePreference();
         return;
       }
 
@@ -275,6 +317,32 @@ class BudgetViewModel extends ChangeNotifier {
       errorMessage = e is StateError ? e.message : 'Unable to load your data. Please try again.';
     } finally {
       isInitializing = false;
+      isLoading = false;
+      _initializeInFlight = false;
+      notifyListeners();
+    }
+  }
+
+  /// Called when connectivity returns after an outage (signed-in users).
+  Future<void> refreshFromCloudIfSignedIn() async {
+    if (isInitializing) return;
+    await _repository.initializeCloud();
+    await _repository.syncAuthStateFromFirebase();
+    if (!_repository.isCloudReady) return;
+    isLoading = true;
+    errorMessage = null;
+    notifyListeners();
+    try {
+      await _bootstrapForAuthMode(AuthMode.email);
+      cloudSyncEnabled = _repository.isCloudReady;
+      await _loadFiftyThirtyBaselinePreference();
+    } on FirebaseException catch (e) {
+      errorMessage = e.message ?? 'Could not sync (${e.code}).';
+    } catch (e) {
+      errorMessage = e is StateError
+          ? e.message
+          : 'Could not refresh data. Check your connection.';
+    } finally {
       isLoading = false;
       notifyListeners();
     }
@@ -310,6 +378,7 @@ class BudgetViewModel extends ChangeNotifier {
       authMode = AuthMode.email;
       await _repository.saveAuthMode(authMode);
       await _bootstrapForAuthMode(AuthMode.email);
+      await _loadFiftyThirtyBaselinePreference();
       successMessage =
           isRegister ? 'Account created and signed in.' : 'Signed in successfully.';
     } on FirebaseAuthException catch (e) {
@@ -527,35 +596,49 @@ class BudgetViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> _loadFiftyThirtyBaselinePreference() async {
+    try {
+      fiftyThirtyBaselineMode = await _repository.loadFiftyThirtyBaselineMode();
+      notifyListeners();
+    } catch (_) {
+      // Keep default if prefs unavailable.
+    }
+  }
+
+  Future<void> setFiftyThirtyBaselineMode(FiftyThirtyBaselineMode mode) async {
+    if (fiftyThirtyBaselineMode == mode) return;
+    fiftyThirtyBaselineMode = mode;
+    notifyListeners();
+    try {
+      await _repository.saveFiftyThirtyBaselineMode(mode);
+    } catch (_) {
+      // Preference failed; UI mode still updated for this session.
+    }
+  }
+
   Future<void> _bootstrapForAuthMode(AuthMode mode) async {
     if (mode != AuthMode.email) {
       cloudSyncEnabled = false;
-      profile = await _repository.loadProfile();
-      await _loadLocalTransactions();
+      profile = null;
+      expenses = [];
+      transactions = [];
       return;
     }
     await _repository.initializeCloud();
     await _repository.syncAuthStateFromFirebase();
     cloudSyncEnabled = _repository.isCloudReady;
-    profile = await _repository.loadProfile();
-    await _loadLocalTransactions();
-    if (cloudSyncEnabled) {
-      try {
-        final restored = await _repository.restoreFromCloud();
-        final restoredTransactions =
-            await _repository.restoreTransactionsFromCloud();
-        profile = restored.profile;
-        expenses = restored.expenses;
-        transactions = [...restoredTransactions]
-          ..sort((a, b) => b.effectiveDate.compareTo(a.effectiveDate));
-        _refreshDerivedExpensesFromTransactions();
-      } catch (_) {
-        // First-run cloud data may not exist yet.
-      }
+    if (!cloudSyncEnabled) {
+      profile = null;
+      expenses = [];
+      transactions = [];
+      return;
     }
+    await _repository.clearLegacyLocalCache();
+    profile = await _repository.loadProfile();
+    await _loadTransactionsFromCloud();
   }
 
-  Future<void> _loadLocalTransactions() async {
+  Future<void> _loadTransactionsFromCloud() async {
     transactions = await _repository.loadTransactions();
     transactions = [...transactions]
       ..sort((a, b) => b.effectiveDate.compareTo(a.effectiveDate));

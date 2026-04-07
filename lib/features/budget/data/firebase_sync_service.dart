@@ -39,11 +39,17 @@ class FirebaseSyncService {
               : AppEnv.firebaseMeasurementId,
         );
         await Firebase.initializeApp(options: options);
+        FirebaseFirestore.instance.settings = const Settings(
+          persistenceEnabled: false,
+        );
       } else {
         // Prefer native config (google-services.json / plist). If missing, fall back
         // to explicit options so Android + desktop can still run in dev.
         try {
           await Firebase.initializeApp();
+          FirebaseFirestore.instance.settings = const Settings(
+            persistenceEnabled: false,
+          );
         } catch (_) {
           final storageBucket = AppEnv.firebaseStorageBucket.isNotEmpty
               ? AppEnv.firebaseStorageBucket
@@ -59,8 +65,15 @@ class FirebaseSyncService {
                 : AppEnv.firebaseMeasurementId,
           );
           await Firebase.initializeApp(options: options);
+          FirebaseFirestore.instance.settings = const Settings(
+            persistenceEnabled: false,
+          );
         }
       }
+    } else {
+      FirebaseFirestore.instance.settings = const Settings(
+        persistenceEnabled: false,
+      );
     }
     _userId = FirebaseAuth.instance.currentUser?.uid;
     _initialized = true;

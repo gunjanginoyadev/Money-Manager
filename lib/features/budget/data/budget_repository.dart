@@ -1,6 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 
 import '../domain/models/auth_mode.dart';
+import '../domain/models/fifty_thirty_baseline_mode.dart';
 import '../domain/models/budget_profile.dart';
 import '../domain/models/expense_entry.dart';
 import '../domain/models/transaction_entry.dart';
@@ -33,6 +34,18 @@ class BudgetRepository {
     return _localDataSource.saveAuthMode(mode.value);
   }
 
+  Future<FiftyThirtyBaselineMode> loadFiftyThirtyBaselineMode() async {
+    final raw = await _localDataSource.loadFiftyThirtyBaselineMode();
+    return fiftyThirtyBaselineModeFromStorage(raw);
+  }
+
+  Future<void> saveFiftyThirtyBaselineMode(FiftyThirtyBaselineMode mode) {
+    return _localDataSource.saveFiftyThirtyBaselineMode(mode.storageValue);
+  }
+
+  /// Clears leftover SharedPreferences from older versions (stale profile from another account).
+  Future<void> clearLegacyLocalCache() => _localDataSource.clearLegacyBudgetKeys();
+
   Future<bool> connectEmail({
     required String email,
     required String password,
@@ -47,129 +60,82 @@ class BudgetRepository {
 
   Future<void> disconnectCloud() => _firebaseSyncService.signOut();
 
-  Future<BudgetProfile?> loadProfile() => _localDataSource.loadProfile();
+  Future<BudgetProfile?> loadProfile() async {
+    if (!isCloudReady) return null;
+    return _firebaseSyncService.fetchRemoteProfile();
+  }
 
-  Future<List<ExpenseEntry>> loadExpenses() => _localDataSource.loadExpenses();
+  Future<List<ExpenseEntry>> loadExpenses() async {
+    if (!isCloudReady) return const [];
+    return _firebaseSyncService.fetchRemoteExpenses();
+  }
 
-  Future<List<TransactionEntry>> loadTransactions() =>
-      _localDataSource.loadTransactions();
+  Future<List<TransactionEntry>> loadTransactions() async {
+    if (!isCloudReady) return const [];
+    return _firebaseSyncService.fetchRemoteTransactions();
+  }
 
   Future<void> saveProfile(BudgetProfile profile) async {
-    await _localDataSource.saveProfile(profile);
-    try {
-      await _firebaseSyncService.syncProfile(profile);
-    } catch (_) {
-      // Cloud sync is optional. Local persistence remains the source of truth.
+    if (!isCloudReady) {
+      throw StateError('You must be online to save your profile.');
     }
+    await _firebaseSyncService.syncProfile(profile);
   }
 
   Future<void> addExpense({
     required BudgetProfile profile,
     required ExpenseEntry expense,
   }) async {
-    final current = await _localDataSource.loadExpenses();
-    final expenses = [...current, expense];
-    await _localDataSource.saveExpenses(expenses);
-    try {
-      await _firebaseSyncService.syncProfile(profile);
-      await _firebaseSyncService.upsertExpense(expense);
-    } catch (_) {
-      // Cloud sync is optional. Local persistence remains the source of truth.
+    if (!isCloudReady) {
+      throw StateError('You must be online to add expenses.');
     }
+    await _firebaseSyncService.syncProfile(profile);
+    await _firebaseSyncService.upsertExpense(expense);
   }
 
   Future<void> addTransaction({
     required BudgetProfile profile,
     required TransactionEntry transaction,
   }) async {
-    final current = await _localDataSource.loadTransactions();
-    final updated = [...current, transaction];
-    await _localDataSource.saveTransactions(updated);
-    try {
-      await _firebaseSyncService.syncProfile(profile);
-      await _firebaseSyncService.upsertTransaction(transaction);
-    } catch (_) {
-      // Local persistence remains source of truth.
+    if (!isCloudReady) {
+      throw StateError('You must be online to add transactions.');
     }
+    await _firebaseSyncService.syncProfile(profile);
+    await _firebaseSyncService.upsertTransaction(transaction);
   }
 
   Future<void> deleteTransaction({
     required BudgetProfile profile,
     required String transactionId,
   }) async {
-    final current = await _localDataSource.loadTransactions();
-    final updated = current.where((e) => e.id != transactionId).toList();
-    await _localDataSource.saveTransactions(updated);
-    try {
-      await _firebaseSyncService.syncProfile(profile);
-      await _firebaseSyncService.removeTransaction(transactionId);
-    } catch (_) {
-      // Local persistence remains source of truth.
+    if (!isCloudReady) {
+      throw StateError('You must be online.');
     }
+    await _firebaseSyncService.syncProfile(profile);
+    await _firebaseSyncService.removeTransaction(transactionId);
   }
 
   Future<void> deleteExpense({
     required BudgetProfile profile,
     required String expenseId,
   }) async {
-    final current = await _localDataSource.loadExpenses();
-    final expenses = current.where((e) => e.id != expenseId).toList();
-    await _localDataSource.saveExpenses(expenses);
-    try {
-      await _firebaseSyncService.syncProfile(profile);
-      await _firebaseSyncService.removeExpense(expenseId);
-    } catch (_) {
-      // Cloud sync is optional. Local persistence remains the source of truth.
+    if (!isCloudReady) {
+      throw StateError('You must be online.');
     }
-  }
-
-  Future<void> forceSync({
-    required BudgetProfile profile,
-    required List<ExpenseEntry> expenses,
-  }) async {
-    final enabled = await _firebaseSyncService.initializeIfConfigured();
-    if (!enabled) {
-      throw Exception('Firebase not configured');
-    }
-    await _firebaseSyncService.fullSync(profile: profile, expenses: expenses);
-    final transactions = await _localDataSource.loadTransactions();
-    for (final tx in transactions) {
-      await _firebaseSyncService.upsertTransaction(tx);
-    }
-  }
-
-  Future<({BudgetProfile profile, List<ExpenseEntry> expenses})> restoreFromCloud()
-  async {
-    final profile = await _firebaseSyncService.fetchRemoteProfile();
-    if (profile == null) {
-      throw Exception('No cloud profile found');
-    }
-    final expenses = await _firebaseSyncService.fetchRemoteExpenses();
-    await _localDataSource.saveProfile(profile);
-    await _localDataSource.saveExpenses(expenses);
-    return (profile: profile, expenses: expenses);
-  }
-
-  Future<List<TransactionEntry>> restoreTransactionsFromCloud() async {
-    final data = await _firebaseSyncService.fetchRemoteTransactions();
-    await _localDataSource.saveTransactions(data);
-    return data;
+    await _firebaseSyncService.syncProfile(profile);
+    await _firebaseSyncService.removeExpense(expenseId);
   }
 
   Future<void> resetMonth(BudgetProfile profile) async {
-    await _localDataSource.saveExpenses(const []);
-    await _localDataSource.saveTransactions(const []);
-    try {
-      await _firebaseSyncService.syncProfile(profile);
-      await _firebaseSyncService.clearExpenses();
-      await _firebaseSyncService.clearTransactions();
-    } catch (_) {
-      // Local state is still reset if cloud is unavailable.
+    if (!isCloudReady) {
+      throw StateError('You must be online to reset.');
     }
+    await _firebaseSyncService.syncProfile(profile);
+    await _firebaseSyncService.clearExpenses();
+    await _firebaseSyncService.clearTransactions();
   }
 
-  /// Clears local storage. If Firebase is configured and a non-anonymous user is
-  /// signed in, deletes all Firestore data under `users/{uid}` and the Auth account.
+  /// Deletes Firestore data and Firebase Auth user when signed in, then clears local prefs.
   ///
   /// [password] must be the account password when a Firebase email user is signed in
   /// (required for re-authentication before account deletion).

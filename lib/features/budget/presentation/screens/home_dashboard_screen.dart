@@ -7,6 +7,8 @@ import '../../../../core/layout/home_shell_insets.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/utils/currency_formatter.dart';
 import '../../../../core/utils/month_utils.dart';
+import '../widgets/liquidity_breakdown_card.dart';
+import '../../domain/models/fifty_thirty_baseline_mode.dart';
 import '../../domain/models/fifty_thirty_twenty_snapshot.dart';
 import '../../domain/models/transaction_entry.dart';
 import '../viewmodels/budget_view_model.dart';
@@ -34,10 +36,9 @@ class HomeDashboardScreen extends StatelessWidget {
     final now = DateTime.now();
     final month = MonthUtils.startOfMonth(now);
     final snap = vm.fiftyThirtyTwentyForMonth(month);
+    final baselineMode = vm.fiftyThirtyBaselineMode;
     final recent = vm.transactionsForMonth(month).take(5).toList();
-    final totalBalance = vm.lifetimeNet;
-    final monthIncome = vm.totalReceivedInMonth(month);
-    final monthExpenses = vm.totalSpentInMonth(month);
+    final liquidity = vm.monthLiquidityForMonth(month);
 
     return Scaffold(
       backgroundColor: AppColors.bg,
@@ -81,13 +82,42 @@ class HomeDashboardScreen extends StatelessWidget {
                   HomeShellInsets.bottomNavHeight(context) + 4,
                 ),
                 children: [
-                  _SummaryCard(
-                    totalBalance: totalBalance,
-                    income: monthIncome,
-                    expenses: monthExpenses,
+                  _MonthScopeBanner(monthLabel: MonthUtils.formatMonthYear(month)),
+                  const SizedBox(height: 12),
+                  LiquidityBreakdownCard(
+                    snapshot: liquidity,
+                    title: 'This month',
+                    subtitle:
+                        'Each new month starts a fresh tally here. Older entries are not deleted — open Report and pick any month or date range.',
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 12, bottom: 4),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.history_rounded,
+                          size: 16,
+                          color: AppColors.textMuted,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'All-time net: ${CurrencyFormatter.formatRupee(vm.lifetimeNet)}',
+                            style: GoogleFonts.sora(
+                              fontSize: 12,
+                              color: AppColors.textSoft,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                   const SizedBox(height: 16),
-                  _FiftyThirtyTwentyCard(snapshot: snap),
+                  _FiftyThirtyTwentyCard(
+                    snapshot: snap,
+                    baselineMode: baselineMode,
+                    onBaselineModeChanged: vm.setFiftyThirtyBaselineMode,
+                  ),
                   const SizedBox(height: 20),
                   Text(
                     'Recent transactions',
@@ -155,76 +185,40 @@ class HomeDashboardScreen extends StatelessWidget {
   }
 }
 
-class _SummaryCard extends StatelessWidget {
-  const _SummaryCard({
-    required this.totalBalance,
-    required this.income,
-    required this.expenses,
-  });
+class _MonthScopeBanner extends StatelessWidget {
+  const _MonthScopeBanner({required this.monthLabel});
 
-  final double totalBalance;
-  final double income;
-  final double expenses;
+  final String monthLabel;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(18),
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFF1A1F32), Color(0xFF222840)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFF2E3A5A)),
+        color: AppColors.surface2,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'TOTAL BALANCE',
+            'Tracking · $monthLabel',
             style: GoogleFonts.sora(
-              fontSize: 10,
-              fontWeight: FontWeight.w600,
-              letterSpacing: 1.2,
-              color: AppColors.textMuted,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            CurrencyFormatter.formatRupee(totalBalance),
-            style: GoogleFonts.jetBrainsMono(
-              fontSize: 28,
+              fontSize: 13,
               fontWeight: FontWeight.w700,
               color: AppColors.text,
             ),
           ),
+          const SizedBox(height: 4),
           Text(
-            'All-time net (income − expenses)',
+            'Home shows this calendar month only. Use Report for past months or custom ranges.',
             style: GoogleFonts.sora(
-              fontSize: 12,
+              fontSize: 11,
+              height: 1.35,
               color: AppColors.textSoft,
             ),
-          ),
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              Expanded(
-                child: _MiniStat(
-                  label: 'Income (month)',
-                  value: CurrencyFormatter.formatRupee(income),
-                  color: AppColors.safe,
-                ),
-              ),
-              Expanded(
-                child: _MiniStat(
-                  label: 'Expenses (month)',
-                  value: CurrencyFormatter.formatRupee(expenses),
-                  color: AppColors.debit,
-                ),
-              ),
-            ],
           ),
         ],
       ),
@@ -232,53 +226,70 @@ class _SummaryCard extends StatelessWidget {
   }
 }
 
-class _MiniStat extends StatelessWidget {
-  const _MiniStat({
-    required this.label,
-    required this.value,
-    required this.color,
+class _BaselineModeToggle extends StatelessWidget {
+  const _BaselineModeToggle({
+    required this.selected,
+    required this.onChanged,
   });
 
-  final String label;
-  final String value;
-  final Color color;
+  final FiftyThirtyBaselineMode selected;
+  final Future<void> Function(FiftyThirtyBaselineMode mode) onChanged;
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label.toUpperCase(),
-          style: GoogleFonts.sora(
-            fontSize: 9,
-            fontWeight: FontWeight.w600,
-            color: AppColors.textMuted,
+    return SegmentedButton<FiftyThirtyBaselineMode>(
+      showSelectedIcon: false,
+      style: SegmentedButton.styleFrom(
+        selectedBackgroundColor: AppColors.primaryGlow,
+        selectedForegroundColor: AppColors.primary,
+        foregroundColor: AppColors.textSoft,
+        side: const BorderSide(color: AppColors.border),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      ),
+      segments: [
+        ButtonSegment<FiftyThirtyBaselineMode>(
+          value: FiftyThirtyBaselineMode.profileSalary,
+          label: Text(
+            'Profile salary',
+            style: GoogleFonts.sora(fontSize: 12, fontWeight: FontWeight.w600),
           ),
+          tooltip: 'Uses monthly income from Profile setup',
         ),
-        const SizedBox(height: 4),
-        Text(
-          value,
-          style: GoogleFonts.jetBrainsMono(
-            fontSize: 15,
-            fontWeight: FontWeight.w600,
-            color: color,
+        ButtonSegment<FiftyThirtyBaselineMode>(
+          value: FiftyThirtyBaselineMode.monthIncomeEntries,
+          label: Text(
+            'Month income',
+            style: GoogleFonts.sora(fontSize: 12, fontWeight: FontWeight.w600),
           ),
+          tooltip: 'Uses sum of income entries this month',
         ),
       ],
+      selected: {selected},
+      onSelectionChanged: (Set<FiftyThirtyBaselineMode> next) {
+        onChanged(next.first);
+      },
     );
   }
 }
 
 class _FiftyThirtyTwentyCard extends StatelessWidget {
-  const _FiftyThirtyTwentyCard({required this.snapshot});
+  const _FiftyThirtyTwentyCard({
+    required this.snapshot,
+    required this.baselineMode,
+    required this.onBaselineModeChanged,
+  });
 
   final FiftyThirtyTwentySnapshot snapshot;
+  final FiftyThirtyBaselineMode baselineMode;
+  final Future<void> Function(FiftyThirtyBaselineMode mode) onBaselineModeChanged;
 
   @override
   Widget build(BuildContext context) {
     final b = snapshot.incomeBaseline;
     if (b <= 0) {
+      final msg = baselineMode == FiftyThirtyBaselineMode.monthIncomeEntries
+          ? 'No income recorded this month yet. Add a salary or income entry, or switch to Profile salary.'
+          : 'Set monthly income in your profile (or add income this month) to use the 50-30-20 view.';
       return Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
@@ -286,9 +297,19 @@ class _FiftyThirtyTwentyCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(16),
           border: Border.all(color: AppColors.border),
         ),
-        child: Text(
-          'Set monthly income in your profile to use the 50-30-20 view.',
-          style: GoogleFonts.sora(fontSize: 13, color: AppColors.textSoft),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _BaselineModeToggle(
+              selected: baselineMode,
+              onChanged: onBaselineModeChanged,
+            ),
+            const SizedBox(height: 12),
+            Text(
+              msg,
+              style: GoogleFonts.sora(fontSize: 13, color: AppColors.textSoft),
+            ),
+          ],
         ),
       );
     }
@@ -311,9 +332,16 @@ class _FiftyThirtyTwentyCard extends StatelessWidget {
               color: AppColors.text,
             ),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 8),
+          _BaselineModeToggle(
+            selected: baselineMode,
+            onChanged: onBaselineModeChanged,
+          ),
+          const SizedBox(height: 8),
           Text(
-            'Targets are 50% Needs, 30% Wants, 20% Savings vs your monthly income.',
+            baselineMode == FiftyThirtyBaselineMode.profileSalary
+                ? 'Targets: 50% Needs, 30% Wants, 20% Savings vs your Profile monthly income.'
+                : 'Targets: 50% Needs, 30% Wants, 20% Savings vs income recorded this month (credits).',
             style: GoogleFonts.sora(
               fontSize: 11,
               height: 1.35,

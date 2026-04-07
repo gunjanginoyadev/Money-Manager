@@ -13,6 +13,7 @@ import '../../domain/models/spending_kind.dart';
 import '../../domain/models/transaction_entry.dart';
 import '../viewmodels/budget_view_model.dart';
 import '../widgets/add_transaction_sheet.dart';
+import '../widgets/liquidity_breakdown_card.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/loading_state.dart';
 
@@ -551,7 +552,37 @@ class _ReportScreenState extends State<ReportScreen> {
                               ],
                             ),
                           ),
+                          const SizedBox(height: 12),
+                          if (_period == _ReportPeriod.month)
+                            LiquidityBreakdownCard(
+                              snapshot: vm.monthLiquidityForMonth(month),
+                              title: 'Period totals',
+                              subtitle:
+                                  'All transactions in ${MonthUtils.formatMonthYear(month)}. Cash vs online uses the payment type on each entry.',
+                            )
+                          else if (_customAppliedStart != null &&
+                              _customAppliedEnd != null)
+                            LiquidityBreakdownCard(
+                              snapshot: vm.monthLiquidityForDateRange(
+                                _customAppliedStart!,
+                                _customAppliedEnd!,
+                              ),
+                              title: 'Period totals',
+                              subtitle:
+                                  'All transactions in ${_periodLabel(vm)}. Cash vs online uses the payment type on each entry.',
+                            ),
                           const SizedBox(height: 14),
+                          if (_filtersActive)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              child: Text(
+                                'INCOME / EXPENSE / NET below reflect filters; period card above does not.',
+                                style: GoogleFonts.sora(
+                                  fontSize: 10,
+                                  color: AppColors.textMuted,
+                                ),
+                              ),
+                            ),
                           Row(
                             children: [
                               Expanded(

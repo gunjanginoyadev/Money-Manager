@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import 'core/config/app_branding.dart';
 import 'core/theme/app_theme.dart';
+import 'core/widgets/app_connectivity_gate.dart';
 import 'core/widgets/budget_message_toast_listener.dart';
 import 'features/budget/data/budget_local_data_source.dart';
 import 'features/budget/data/budget_repository.dart';
@@ -24,8 +25,7 @@ class MoneyManagerApp extends StatelessWidget {
           ),
         ),
         ChangeNotifierProvider<BudgetViewModel>(
-          create: (context) => BudgetViewModel(context.read<BudgetRepository>())
-            ..initialize(),
+          create: (context) => BudgetViewModel(context.read<BudgetRepository>()),
         ),
       ],
       child: MaterialApp(
@@ -34,7 +34,9 @@ class MoneyManagerApp extends StatelessWidget {
         themeMode: ThemeMode.dark,
         theme: AppTheme.lightTheme,
         darkTheme: AppTheme.darkTheme,
-        home: const BudgetMessageToastListener(child: HomeShell()),
+        home: const AppConnectivityGate(
+          child: BudgetMessageToastListener(child: HomeShell()),
+        ),
       ),
     );
   }
